@@ -1,0 +1,11 @@
+anthropic>=0.39.0
+streamlit>=1.38.0
+feedparser>=6.0.0
+ddgs>=9.0.0
+thefuzz[speedup]>=0.22.0
+pyyaml>=6.0
+python-dateutil>=2.9.0
+httpx>=0.28.0
+lxml>=5.0.0
+cssselect>=1.2.0
+playwright>=1.50.0

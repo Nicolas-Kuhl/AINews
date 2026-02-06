@@ -1,0 +1,22 @@
+anthropic_api_key: YOUR_API_KEY_HERE
+model: claude-sonnet-4-5-20250929
+feeds:
+- name: OpenAI News
+  url: https://openai.com/news/
+  type: web
+  enabled: true
+- name: Anthropic News
+  url: https://www.anthropic.com/news
+  type: web
+  enabled: true
+- name: Gemini News
+  url: https://blog.google/products-and-platforms/products/gemini/
+  type: web
+  enabled: true
+search_queries: []
+dedup_threshold: 80
+max_search_results: 5
+feed_timeout: 15
+max_items_per_feed: 20
+scoring_batch_size: 20
+db_path: data/ainews.db
