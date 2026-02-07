@@ -4,6 +4,7 @@
 import streamlit as st
 from datetime import datetime, timedelta
 from pathlib import Path
+import yaml
 
 from ainews.config import load_config
 from ainews.storage.database import Database
@@ -12,8 +13,58 @@ from dashboard_components import _render_news_list, _render_settings_tab, load_c
 PROJECT_ROOT = Path(__file__).resolve().parent
 
 
+def check_authentication():
+    """Check if authentication is enabled and handle login."""
+    auth_config_path = PROJECT_ROOT / "auth_config.yaml"
+
+    # If no auth config exists, skip authentication
+    if not auth_config_path.exists():
+        return True
+
+    # Import authenticator only if config exists
+    try:
+        import streamlit_authenticator as stauth
+    except ImportError:
+        st.error("streamlit-authenticator not installed. Run: pip install streamlit-authenticator")
+        st.stop()
+
+    # Load auth config
+    with open(auth_config_path) as file:
+        auth_config = yaml.safe_load(file)
+
+    # Create authenticator
+    authenticator = stauth.Authenticate(
+        auth_config['credentials'],
+        auth_config['cookie']['name'],
+        auth_config['cookie']['key'],
+        auth_config['cookie']['expiry_days']
+    )
+
+    # Login form
+    name, authentication_status, username = authenticator.login('Login', 'main')
+
+    if authentication_status == False:
+        st.error('Username/password is incorrect')
+        st.stop()
+    elif authentication_status == None:
+        st.warning('Please enter your username and password')
+        st.info('💡 **First time?** Copy `auth_config.example.yaml` to `auth_config.yaml` and customize it.')
+        st.stop()
+
+    # Add logout button in sidebar if authenticated
+    if authentication_status:
+        with st.sidebar:
+            st.write(f'Welcome **{name}**')
+            authenticator.logout('Logout', 'sidebar')
+
+    return True
+
+
 def main():
     st.set_page_config(page_title="AI News Aggregator", page_icon="📡", layout="wide")
+
+    # Check authentication
+    check_authentication()
 
     # Load CSS from external file
     load_css(PROJECT_ROOT / "assets" / "style.css")

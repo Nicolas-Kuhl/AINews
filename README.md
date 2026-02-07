@@ -101,7 +101,16 @@ crontab -e
 streamlit run dashboard.py
 ```
 
-The dashboard opens at `http://localhost:8501`. From there you can:
+The dashboard opens at `http://localhost:8501`.
+
+**Optional: Enable authentication** (recommended before deployment):
+```bash
+chmod +x scripts/setup_auth.sh
+./scripts/setup_auth.sh
+# Default: username=admin, password=changeme123
+```
+
+From the dashboard you can:
 
 - Browse scored news in the **New Releases** and **Industry News** tabs
 - Expand any row to see the summary, score reasoning, and learning objectives

@@ -1,0 +1,29 @@
+# Streamlit Authentication Configuration
+# Copy this file to auth_config.yaml and update with your credentials
+#
+# To generate password hash:
+#   python scripts/generate_password_hash.py
+
+credentials:
+  usernames:
+    admin:
+      email: admin@example.com
+      name: Admin User
+      # This is the hash for password: "changeme123"
+      # Generate your own with: python scripts/generate_password_hash.py
+      password: $2b$12$KIXQQqhHKq8yVfQjat18/.OjHRY0cL4QJVW8jOGz7MhkRfMJI5Yxm
+
+cookie:
+  # Session expiry in days
+  expiry_days: 30
+
+  # Random key for cookie signing - CHANGE THIS!
+  # Generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"
+  key: change_this_to_a_random_string_32_characters_long
+
+  # Cookie name
+  name: ainews_auth_cookie
+
+# Optional: Require re-authentication after password change
+preauthorized:
+  emails: []

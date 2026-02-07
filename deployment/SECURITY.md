@@ -50,82 +50,83 @@ sudo htpasswd -D /etc/nginx/.htpasswd username
 
 ---
 
-## Option 2: Streamlit-Authenticator (Recommended)
+## Option 2: Streamlit-Authenticator (Recommended) ✅ IMPLEMENTED
 
-**Setup time:** 10 minutes
+**Setup time:** 2 minutes (automated)
 **Security:** Good
-**Pros:** Native Streamlit, nice UX, logout button
-**Cons:** Requires code changes
+**Pros:** Native Streamlit, nice UX, logout button, **already integrated in dashboard.py**
+**Cons:** None
 
-### Install
+### Quick Setup (Automated)
 
 ```bash
-pip install streamlit-authenticator
+# Run the setup script
+chmod +x scripts/setup_auth.sh
+./scripts/setup_auth.sh
+
+# Start dashboard
+streamlit run dashboard.py
 ```
 
-### Implementation
+**Default credentials:**
+- Username: `admin`
+- Password: `changeme123`
 
-Create `auth_config.yaml`:
+⚠️ **Change the default password before deploying!**
+
+### Manual Setup
+
+1. **Copy example config:**
+   ```bash
+   cp auth_config.example.yaml auth_config.yaml
+   ```
+
+2. **Generate cookie key:**
+   ```bash
+   python -c "import secrets; print(secrets.token_urlsafe(32))"
+   # Copy output to auth_config.yaml cookie.key field
+   ```
+
+3. **Generate password hash:**
+   ```bash
+   python scripts/generate_password_hash.py
+   # Copy hash to auth_config.yaml
+   ```
+
+4. **Start dashboard:**
+   ```bash
+   streamlit run dashboard.py
+   ```
+
+### Add More Users
+
+Edit `auth_config.yaml`:
 
 ```yaml
 credentials:
   usernames:
     admin:
-      email: you@example.com
+      email: admin@example.com
       name: Admin User
-      password: $2b$12$... # bcrypt hash (generate below)
+      password: $2b$12$...
 
-cookie:
-  expiry_days: 30
-  key: random_signature_key_here  # Generate a random string
-  name: ainews_auth
+    john:
+      email: john@example.com
+      name: John Doe
+      password: $2b$12$...  # Generate with scripts/generate_password_hash.py
 ```
 
-### Generate Password Hash
+### Disable Authentication
 
-```python
-import streamlit_authenticator as stauth
+Simply delete or rename `auth_config.yaml`. The dashboard will work without authentication if this file doesn't exist.
 
-# Generate hashed password
-hashed = stauth.Hasher(['your_password']).generate()
-print(hashed[0])  # Use this in auth_config.yaml
-```
+### How It Works
 
-### Add to dashboard.py
-
-Add at the top of `dashboard.py`:
-
-```python
-import streamlit_authenticator as stauth
-import yaml
-
-# Load auth config
-with open('auth_config.yaml') as file:
-    auth_config = yaml.safe_load(file)
-
-# Create authenticator
-authenticator = stauth.Authenticate(
-    auth_config['credentials'],
-    auth_config['cookie']['name'],
-    auth_config['cookie']['key'],
-    auth_config['cookie']['expiry_days']
-)
-
-# Login form
-name, authentication_status, username = authenticator.login('Login', 'main')
-
-if authentication_status == False:
-    st.error('Username/password is incorrect')
-    st.stop()
-elif authentication_status == None:
-    st.warning('Please enter your username and password')
-    st.stop()
-
-# Add logout button in sidebar
-authenticator.logout('Logout', 'sidebar')
-
-# Rest of your dashboard code goes here...
-```
+The authentication is built into `dashboard.py`:
+- Checks for `auth_config.yaml` on startup
+- If found, shows login page
+- If not found, skips authentication
+- Logout button appears in sidebar when logged in
 
 **Docs:** https://github.com/mkhorasani/Streamlit-Authenticator
 

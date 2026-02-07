@@ -19,6 +19,7 @@ data/*.xml
 
 # Config with secrets
 config.yaml
+auth_config.yaml
 
 # IDE
 .vscode/
