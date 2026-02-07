@@ -2,6 +2,7 @@
 """AI News Aggregator — fetch, process, and store pipeline."""
 
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import anthropic
@@ -17,8 +18,10 @@ from ainews.storage.database import Database
 
 
 def main():
-    print("=" * 60)
+    start_time = datetime.now()
+    print("\n" + "=" * 60)
     print("AI News Aggregator — Fetch Pipeline")
+    print(f"Started: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 60)
 
     # 1. Load config
@@ -66,6 +69,16 @@ def main():
         # Still generate RSS feed even if no new items
         _generate_rss_feed(db, cfg)
         db.close()
+
+        # Summary for no-new-items case
+        end_time = datetime.now()
+        duration = (end_time - start_time).total_seconds()
+        print("\n" + "=" * 60)
+        print("Pipeline Complete (no new items)")
+        print(f"  Started:     {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"  Finished:    {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"  Duration:    {duration:.1f}s")
+        print("=" * 60)
         return
 
     # 6. Score with Claude
@@ -96,8 +109,14 @@ def main():
     db.close()
 
     # Summary
+    end_time = datetime.now()
+    duration = (end_time - start_time).total_seconds()
+
     print("\n" + "=" * 60)
     print("Pipeline Complete!")
+    print(f"  Started:     {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"  Finished:    {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"  Duration:    {duration:.1f}s")
     print(f"  Fetched:     {len(combined)} total items")
     print(f"  Unique:      {len(unique)} after dedup")
     print(f"  New:         {len(new_items)} not in DB")
