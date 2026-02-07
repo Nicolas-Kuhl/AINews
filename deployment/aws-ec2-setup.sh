@@ -38,8 +38,12 @@ elif [ "$OS" = "amzn" ]; then
     # Install Python 3.12 (available in AL2023 repos)
     sudo dnf install -y python3.12 python3.12-pip python3.12-devel
 
-    # Install Nginx and rsync
-    sudo dnf install -y nginx rsync
+    # Install Nginx, rsync, and cronie (for crontab)
+    sudo dnf install -y nginx rsync cronie
+
+    # Enable and start cronie service for crontab
+    sudo systemctl enable crond
+    sudo systemctl start crond
 
 else
     echo "ERROR: Unsupported OS: $OS"
@@ -94,8 +98,25 @@ playwright install chromium
 if [ "$OS" = "ubuntu" ]; then
     playwright install-deps chromium
 elif [ "$OS" = "amzn" ]; then
-    # AL2023 may need manual dependency installation
-    playwright install-deps chromium || echo "WARNING: Some Playwright dependencies may need manual installation"
+    # AL2023: Manually install Playwright dependencies
+    echo "Installing Playwright dependencies for Amazon Linux 2023..."
+    sudo dnf install -y \
+        alsa-lib \
+        atk \
+        cups-libs \
+        libdrm \
+        libX11 \
+        libXcomposite \
+        libXdamage \
+        libXext \
+        libXfixes \
+        libXrandr \
+        libgbm \
+        libxcb \
+        libxkbcommon \
+        mesa-libgbm \
+        nss \
+        pango || echo "WARNING: Some Playwright dependencies may not be available on AL2023"
 fi
 
 # Create systemd service for Streamlit
@@ -167,6 +188,7 @@ events {
 http {
     include /etc/nginx/mime.types;
     default_type application/octet-stream;
+    types_hash_max_size 2048;
     access_log /var/log/nginx/access.log;
     sendfile on;
     keepalive_timeout 65;
