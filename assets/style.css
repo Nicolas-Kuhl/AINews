@@ -1,0 +1,252 @@
+/* AI News Aggregator - Pluralsight Theme for Streamlit */
+
+/* ---- Color Variables ---- */
+:root {
+    --score-high: #d32f2f;
+    --score-mid: #f39c12;
+    --score-low: #a5aacf;
+    --bg-dark: #130f25;
+    --bg-panel: #1e1a36;
+    --accent-pink: #e7005e;
+    --text-primary: #ffffff;
+    --text-secondary: #a5aacf;
+    --border-color: #383461;
+}
+
+/* ---- Global Styles ---- */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+.stApp, [data-testid="stAppViewContainer"] {
+    background-color: var(--bg-dark);
+    color: var(--text-primary);
+    font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+}
+
+/* ---- Sidebar ---- */
+[data-testid="stSidebar"], [data-testid="stSidebar"] > div {
+    background-color: var(--bg-panel);
+    color: var(--text-primary);
+}
+
+[data-testid="stSidebar"] label,
+[data-testid="stSidebar"] .stMarkdown,
+[data-testid="stSidebar"] span {
+    color: var(--text-primary) !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stWidgetLabel"] label {
+    color: var(--text-secondary) !important;
+}
+
+/* ---- Headers ---- */
+h1 {
+    color: var(--text-primary) !important;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+h2, h3 {
+    color: var(--text-primary) !important;
+    font-weight: 600;
+}
+
+/* ---- Links ---- */
+a {
+    color: var(--accent-pink) !important;
+    text-decoration: none;
+    transition: color 0.15s ease;
+}
+
+a:hover {
+    color: #ff1675 !important;
+}
+
+/* ---- Tabs ---- */
+[data-testid="stTabs"] button {
+    color: var(--text-secondary) !important;
+    font-weight: 500;
+    border-bottom: 2px solid transparent;
+    transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+[data-testid="stTabs"] button[aria-selected="true"] {
+    color: var(--accent-pink) !important;
+    border-bottom: 2px solid var(--accent-pink) !important;
+}
+
+[data-testid="stTabs"] button:hover {
+    color: var(--text-primary) !important;
+}
+
+/* ---- Dividers ---- */
+hr {
+    border-color: var(--border-color) !important;
+}
+
+/* ---- Buttons ---- */
+/* Base buttons - ghost style */
+.stButton > button {
+    background: transparent !important;
+    color: var(--text-secondary) !important;
+    border: none !important;
+    border-radius: 999px !important;
+    font-weight: 600;
+    padding: 0.3rem 1.2rem !important;
+    box-shadow: none !important;
+    transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.stButton > button:hover {
+    color: var(--text-primary) !important;
+}
+
+.stButton > button:focus {
+    box-shadow: none !important;
+    outline: none !important;
+}
+
+/* Primary buttons - pink accent */
+.stButton > button[kind="primary"],
+.stButton > button[kind="primary"]:focus {
+    background-color: var(--accent-pink) !important;
+    color: var(--text-primary) !important;
+    border: none !important;
+    border-radius: 6px !important;
+    padding: 0.2rem 0.8rem !important;
+    font-size: 0.8rem !important;
+    transition: background-color 0.15s ease, transform 0.1s ease;
+}
+
+.stButton > button[kind="primary"]:hover {
+    background-color: #ff1675 !important;
+    color: var(--text-primary) !important;
+    transform: translateY(-1px);
+}
+
+.stButton > button[kind="primary"]:active {
+    transform: translateY(0);
+}
+
+/* ---- Expander (Detail Panels) ---- */
+[data-testid="stExpander"] {
+    border-left: 3px solid var(--accent-pink);
+    background-color: var(--bg-panel);
+    border-radius: 0 8px 8px 0;
+    margin: 0.2rem 0 0.5rem 0;
+}
+
+[data-testid="stExpander"] [data-testid="stExpanderDetails"] {
+    background-color: var(--bg-panel);
+    padding: 1rem 1.2rem;
+}
+
+[data-testid="stExpander"] p {
+    color: var(--text-secondary) !important;
+    font-size: 0.85rem !important;
+    line-height: 1.6 !important;
+}
+
+[data-testid="stExpander"] strong {
+    color: var(--text-primary) !important;
+}
+
+/* ---- Text Inputs ---- */
+input[type="text"], textarea {
+    background-color: #2a2753 !important;
+    color: var(--text-primary) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 8px !important;
+    transition: border-color 0.15s ease;
+}
+
+input[type="text"]:focus, textarea:focus {
+    border-color: var(--accent-pink) !important;
+}
+
+/* ---- Selectbox / Radio / Slider ---- */
+[data-testid="stSelectbox"] > div > div,
+[data-baseweb="select"] {
+    background-color: #2a2753 !important;
+    color: var(--text-primary) !important;
+}
+
+/* ---- Info/Alert Boxes ---- */
+[data-testid="stAlert"] {
+    background-color: var(--bg-panel) !important;
+    color: var(--text-secondary) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 8px !important;
+}
+
+/* ---- Code Tags ---- */
+code {
+    background-color: #2a2753 !important;
+    color: var(--accent-pink) !important;
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+
+/* ---- Captions ---- */
+.stCaption {
+    color: var(--text-secondary) !important;
+    font-size: 0.85rem !important;
+}
+
+/* ---- Containers & Columns ---- */
+[data-testid="stHorizontalBlock"] {
+    gap: 0.3rem !important;
+    align-items: center !important;
+}
+
+[data-testid="stVerticalBlock"] > div {
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}
+
+/* ---- News Table ---- */
+.news-table-header {
+    background-color: var(--bg-panel);
+    border-radius: 8px 8px 0 0;
+    border-bottom: 2px solid var(--accent-pink);
+    padding: 0.6rem 0;
+    margin-bottom: 0;
+}
+
+.news-table-header p,
+.news-table-header span {
+    color: var(--text-secondary) !important;
+    font-weight: 600 !important;
+    font-size: 0.75rem !important;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.news-table-row {
+    border-bottom: 1px solid rgba(56, 52, 97, 0.3);
+    padding: 0.4rem 0;
+    transition: background-color 0.15s ease;
+    margin: 0;
+}
+
+.news-table-row:hover {
+    background-color: rgba(30, 26, 54, 0.5);
+}
+
+/* Detail panel styling - no borders, just padding and background */
+.news-table-row + [data-testid="stVerticalBlock"] {
+    background-color: rgba(30, 26, 54, 0.5);
+    padding: 1rem 1.5rem;
+    margin: 0 0 0.5rem 2.5rem;
+    border-radius: 8px;
+}
+
+.news-table-row p {
+    margin: 0 !important;
+}
+
+/* ---- Spinner ---- */
+[data-testid="stSpinner"] > div {
+    border-color: var(--accent-pink) transparent transparent transparent !important;
+}

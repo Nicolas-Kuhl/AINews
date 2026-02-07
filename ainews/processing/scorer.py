@@ -1,5 +1,6 @@
 import json
 import re
+from typing import Optional
 
 import anthropic
 
@@ -123,7 +124,7 @@ def score_items(
     model: str,
     items: list[RawNewsItem],
     batch_size: int = 10,
-    scoring_prompt: str | None = None,
+    scoring_prompt: Optional[str] = None,
 ) -> list[ProcessedNewsItem]:
     """Score a list of raw news items using Claude in batches."""
     batch_size = max(1, batch_size)

@@ -292,7 +292,7 @@ class Database:
             for r in rows
         ]
 
-    def get_last_run_stats(self) -> dict | None:
+    def get_last_run_stats(self) -> Optional[dict]:
         row = self.conn.execute(
             "SELECT MAX(processed_at) as last_run FROM news_items"
         ).fetchone()

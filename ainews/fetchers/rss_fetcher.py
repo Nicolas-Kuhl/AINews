@@ -3,6 +3,7 @@
 import re
 from datetime import datetime
 from time import mktime
+from typing import Optional
 
 import feedparser
 import httpx
@@ -160,7 +161,7 @@ def _entries_to_items(entries, source_name: str, max_items: int) -> list[RawNews
     return items
 
 
-def _parse_date(entry) -> datetime | None:
+def _parse_date(entry) -> Optional[datetime]:
     """Try to parse a date from a feed entry."""
     for field in ("published", "updated", "created"):
         raw = entry.get(f"{field}_parsed") or entry.get(field)

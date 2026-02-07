@@ -2,6 +2,7 @@
 
 import re
 from datetime import datetime
+from typing import Optional
 from urllib.parse import urljoin, urlparse
 
 from dateutil import parser as dateparser
@@ -10,7 +11,7 @@ from lxml import html as lxml_html
 from ainews.models import RawNewsItem
 
 
-def discover_rss_link(html_text: str, base_url: str) -> str | None:
+def discover_rss_link(html_text: str, base_url: str) -> Optional[str]:
     """Look for RSS/Atom autodiscovery <link> in HTML <head>."""
     try:
         doc = lxml_html.fromstring(html_text)
@@ -240,7 +241,7 @@ def _is_article_url(url: str, base_url: str) -> bool:
     return True
 
 
-def _extract_date_near(element) -> datetime | None:
+def _extract_date_near(element) -> Optional[datetime]:
     """Try to find a date near the given element."""
     if element is None:
         return None
@@ -271,7 +272,7 @@ def _extract_date_near(element) -> datetime | None:
     return None
 
 
-def _extract_description(element, title: str) -> str | None:
+def _extract_description(element, title: str) -> Optional[str]:
     """First <p> that isn't the title text, max 500 chars."""
     if element is None:
         return None
