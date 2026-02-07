@@ -146,7 +146,13 @@ elif [ "$OS" = "amzn" ]; then
     sudo dnf install -y \
         alsa-lib \
         atk \
+        at-spi2-atk \
+        at-spi2-core \
+        cairo \
         cups-libs \
+        dbus-glib \
+        gdk-pixbuf2 \
+        gtk3 \
         libdrm \
         libX11 \
         libXcomposite \
@@ -157,9 +163,11 @@ elif [ "$OS" = "amzn" ]; then
         libgbm \
         libxcb \
         libxkbcommon \
+        libXScrnSaver \
         mesa-libgbm \
         nss \
-        pango || echo "WARNING: Some Playwright dependencies may not be available on AL2023"
+        pango \
+        xorg-x11-server-Xvfb || echo "WARNING: Some Playwright dependencies may not be available on AL2023"
 fi
 
 # Create necessary directories
