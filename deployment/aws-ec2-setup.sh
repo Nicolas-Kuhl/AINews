@@ -28,8 +28,8 @@ if [ "$OS" = "ubuntu" ]; then
     sudo apt update
     sudo apt install python3.12 python3.12-venv python3.12-dev -y
 
-    # Install Nginx
-    sudo apt install nginx -y
+    # Install Nginx and rsync
+    sudo apt install nginx rsync -y
 
 elif [ "$OS" = "amzn" ]; then
     echo "Installing packages for Amazon Linux 2023..."
@@ -38,8 +38,8 @@ elif [ "$OS" = "amzn" ]; then
     # Install Python 3.12 (available in AL2023 repos)
     sudo dnf install -y python3.12 python3.12-pip python3.12-devel
 
-    # Install Nginx
-    sudo dnf install -y nginx
+    # Install Nginx and rsync
+    sudo dnf install -y nginx rsync
 
 else
     echo "ERROR: Unsupported OS: $OS"
@@ -52,10 +52,31 @@ APP_DIR="/opt/ainews"
 sudo mkdir -p $APP_DIR
 sudo chown $USER:$USER $APP_DIR
 
-# Clone or copy your application files
-# (You'll need to upload your code to the instance first)
-# For now, assuming code is already in current directory
-cp -r . $APP_DIR/
+# Get the directory where the script is located
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." && pwd )"
+
+echo "Copying application files from $PROJECT_ROOT to $APP_DIR..."
+
+# Copy application files (excluding venv, data, etc.)
+rsync -av --exclude='.git' \
+    --exclude='venv' \
+    --exclude='.venv*' \
+    --exclude='data/*.db' \
+    --exclude='data/*.log' \
+    --exclude='data/*.xml' \
+    --exclude='__pycache__' \
+    --exclude='*.pyc' \
+    --exclude='.DS_Store' \
+    --exclude='config.yaml' \
+    "$PROJECT_ROOT/" "$APP_DIR/"
+
+# Verify requirements.txt exists
+if [ ! -f "$APP_DIR/requirements.txt" ]; then
+    echo "ERROR: requirements.txt not found in $APP_DIR"
+    echo "Please ensure you're running this script from the project directory."
+    exit 1
+fi
 
 # Create virtual environment
 cd $APP_DIR
