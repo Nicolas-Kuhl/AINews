@@ -162,7 +162,14 @@ elif [ "$OS" = "amzn" ]; then
         pango || echo "WARNING: Some Playwright dependencies may not be available on AL2023"
 fi
 
+# Create necessary directories
+echo ""
+echo "Creating necessary directories..."
+mkdir -p "$APP_DIR/data"
+mkdir -p "$APP_DIR/.streamlit"
+
 # Create systemd service for Streamlit
+echo "Creating systemd service..."
 sudo tee /etc/systemd/system/ainews-dashboard.service > /dev/null <<EOF
 [Unit]
 Description=AI News Aggregator Dashboard
@@ -171,10 +178,11 @@ After=network.target
 [Service]
 Type=simple
 User=$USER
-WorkingDirectory=$APP_DIR
-Environment="PATH=$APP_DIR/venv/bin"
-ExecStart=$APP_DIR/venv/bin/streamlit run dashboard.py --server.port 8501 --server.address 127.0.0.1
+WorkingDirectory=/opt/ainews
+Environment="PATH=/opt/ainews/venv/bin"
+ExecStart=/opt/ainews/venv/bin/streamlit run /opt/ainews/dashboard.py --server.port 8501 --server.address 127.0.0.1
 Restart=always
+RestartSec=3
 
 [Install]
 WantedBy=multi-user.target
