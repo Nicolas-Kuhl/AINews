@@ -98,7 +98,7 @@ def save_rss_feed(db, output_path: str, min_score: int = 8):
         min_score: Minimum score threshold (default: 8)
     """
     # Query all unacknowledged items
-    items = db.query_items(
+    items = db.query(
         min_score=min_score,
         show_acknowledged=False,
         sort_by="published",
