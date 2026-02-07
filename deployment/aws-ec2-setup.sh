@@ -61,10 +61,12 @@ EOF
 # Configure Nginx reverse proxy
 sudo tee /etc/nginx/sites-available/ainews > /dev/null <<'EOF'
 server {
-    listen 80;
+    # Listen on all network interfaces (accessible from internet)
+    listen 80 default_server;
+    listen [::]:80 default_server ipv6only=on;
     server_name _;  # Replace with your domain if you have one
 
-    # Dashboard
+    # Dashboard (proxies to Streamlit on localhost)
     location / {
         proxy_pass http://127.0.0.1:8501;
         proxy_http_version 1.1;
@@ -129,7 +131,29 @@ echo ""
 echo "5. Access dashboard at: http://YOUR_EC2_PUBLIC_IP/"
 echo "6. RSS feed available at: http://YOUR_EC2_PUBLIC_IP/rss/high_priority.xml"
 echo ""
-echo "Don't forget to:"
-echo "- Configure EC2 security group to allow HTTP (port 80)"
-echo "- Set up an Elastic IP for a stable address"
-echo "- Consider setting up SSL with Let's Encrypt (certbot)"
+echo "⚠️  IMPORTANT - Security Group Configuration:"
+echo "=================================================="
+echo ""
+echo "Your EC2 security group MUST allow these inbound rules:"
+echo "  • HTTP (port 80) from 0.0.0.0/0"
+echo "  • HTTPS (port 443) from 0.0.0.0/0 (if using SSL)"
+echo "  • SSH (port 22) from YOUR_IP/32 (for management)"
+echo ""
+echo "Without port 80 open, the dashboard won't be accessible!"
+echo ""
+echo "To check if it's working:"
+echo "  1. Get your EC2 public IP: curl -4 ifconfig.me"
+echo "  2. Visit: http://YOUR_EC2_PUBLIC_IP/"
+echo "  3. Check Nginx status: sudo systemctl status nginx"
+echo "  4. Check Streamlit status: sudo systemctl status ainews-dashboard"
+echo ""
+echo "Next steps:"
+echo "  • Set up an Elastic IP for a stable address"
+echo "  • Configure SSL with Let's Encrypt: sudo certbot --nginx -d yourdomain.com"
+echo "  • Enable authentication: ./deployment/add-basic-auth.sh"
+echo ""
+echo "Troubleshooting:"
+echo "  • If you can't connect: Check security group allows port 80"
+echo "  • Test Nginx: curl http://localhost"
+echo "  • Test Streamlit: curl http://localhost:8501"
+echo "  • View logs: sudo journalctl -u ainews-dashboard -f"

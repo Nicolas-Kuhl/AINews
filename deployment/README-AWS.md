@@ -70,10 +70,35 @@ chmod +x deployment/add-basic-auth.sh
 
 See **[SECURITY.md](SECURITY.md)** for all authentication options.
 
-### Step 5: Access
+### Step 5: Configure Security Group ⚠️
 
-- **Dashboard:** `http://YOUR_EC2_IP/` (login required)
-- **RSS Feed:** `http://YOUR_EC2_IP/rss/high_priority.xml` (public)
+**CRITICAL:** Your EC2 security group must allow inbound HTTP traffic!
+
+```bash
+# Allow HTTP from anywhere
+aws ec2 authorize-security-group-ingress \
+  --group-id sg-xxxxxxxxx \
+  --protocol tcp \
+  --port 80 \
+  --cidr 0.0.0.0/0
+```
+
+Or via AWS Console: **EC2 → Security Groups → Edit Inbound Rules → Add HTTP (port 80)**
+
+### Step 6: Access & Verify
+
+- **Dashboard:** `http://YOUR_EC2_IP/`
+- **RSS Feed:** `http://YOUR_EC2_IP/rss/high_priority.xml`
+
+**Test connectivity:**
+```bash
+# From your computer
+curl http://YOUR_EC2_PUBLIC_IP
+
+# Should return HTML (Streamlit dashboard)
+```
+
+**Can't connect?** See **[CONNECTIVITY.md](CONNECTIVITY.md)** for detailed troubleshooting.
 
 ### Optional: Add SSL Certificate
 
