@@ -75,10 +75,43 @@ echo "The default password is 'changeme123'"
 read -p "Would you like to set a custom password now? (y/N): " set_password
 
 if [ "$set_password" = "y" ]; then
-    $PYTHON_BIN scripts/generate_password_hash.py
+    # Prompt for password
+    read -s -p "Enter new password: " PASSWORD1
     echo ""
-    echo "Copy the hash above and paste it into auth_config.yaml"
-    echo "at line 10 (replace the existing password hash)"
+    read -s -p "Confirm password: " PASSWORD2
+    echo ""
+
+    if [ "$PASSWORD1" != "$PASSWORD2" ]; then
+        echo "ERROR: Passwords don't match!"
+        exit 1
+    fi
+
+    if [ ${#PASSWORD1} -lt 8 ]; then
+        echo "WARNING: Password is short. Consider using at least 8 characters."
+        read -p "Continue anyway? (y/N): " proceed
+        if [ "$proceed" != "y" ]; then
+            echo "Setup cancelled."
+            exit 1
+        fi
+    fi
+
+    echo ""
+    echo "Generating password hash..."
+
+    # Generate hash using bcrypt
+    PASSWORD_HASH=$($PYTHON_BIN -c "import bcrypt; print(bcrypt.hashpw('$PASSWORD1'.encode('utf-8'), bcrypt.gensalt()).decode('utf-8'))")
+
+    # Replace the password hash in auth_config.yaml
+    # Match the line that starts with 'password:' followed by a bcrypt hash
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS
+        sed -i '' "s|^      password: \\\$2b\\\$.*|      password: $PASSWORD_HASH|" auth_config.yaml
+    else
+        # Linux
+        sed -i "s|^      password: \\\$2b\\\$.*|      password: $PASSWORD_HASH|" auth_config.yaml
+    fi
+
+    echo "✓ Custom password hash set in auth_config.yaml"
 else
     echo ""
     echo "Using default password: changeme123"
@@ -92,9 +125,17 @@ echo "=================================================="
 echo ""
 echo "Configuration file: auth_config.yaml"
 echo ""
-echo "Default credentials:"
-echo "  Username: admin"
-echo "  Password: changeme123"
+if [ "$set_password" = "y" ]; then
+    echo "Credentials:"
+    echo "  Username: admin"
+    echo "  Password: (your custom password)"
+else
+    echo "Default credentials:"
+    echo "  Username: admin"
+    echo "  Password: changeme123"
+    echo ""
+    echo "⚠️  REMEMBER: Change the default password before deploying!"
+fi
 echo ""
 echo "To add more users or change passwords:"
 echo "  1. Run: python scripts/generate_password_hash.py"
