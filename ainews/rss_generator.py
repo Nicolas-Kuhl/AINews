@@ -23,9 +23,19 @@ def generate_rss_feed(items: List[ProcessedNewsItem], min_score: int = 8) -> str
     filtered_items = [item for item in items if item.score >= min_score]
 
     # Sort by published date (newest first)
-    # Use timezone-aware min datetime to handle comparison with timezone-aware published dates
+    # Normalize all datetimes to timezone-aware to handle mixed timezone awareness
     min_datetime = datetime.min.replace(tzinfo=timezone.utc)
-    filtered_items.sort(key=lambda x: x.published or min_datetime, reverse=True)
+
+    def get_sort_key(item):
+        """Get timezone-aware datetime for sorting."""
+        if item.published is None:
+            return min_datetime
+        # If datetime is naive (no timezone), assume UTC
+        if item.published.tzinfo is None:
+            return item.published.replace(tzinfo=timezone.utc)
+        return item.published
+
+    filtered_items.sort(key=get_sort_key, reverse=True)
 
     # Limit to most recent 50 items
     filtered_items = filtered_items[:50]
