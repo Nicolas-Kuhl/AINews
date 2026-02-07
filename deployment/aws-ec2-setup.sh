@@ -82,6 +82,45 @@ if [ ! -f "$APP_DIR/requirements.txt" ]; then
     exit 1
 fi
 
+# Set up config.yaml from example
+echo ""
+echo "Setting up configuration..."
+if [ ! -f "$APP_DIR/config.example.yaml" ]; then
+    echo "ERROR: config.example.yaml not found!"
+    exit 1
+fi
+
+if [ ! -f "$APP_DIR/config.yaml" ]; then
+    cp "$APP_DIR/config.example.yaml" "$APP_DIR/config.yaml"
+    echo "✓ Created config.yaml from config.example.yaml"
+else
+    echo "✓ config.yaml already exists (not overwriting)"
+fi
+
+# Prompt for Anthropic API key
+echo ""
+echo "Anthropic API Key Setup:"
+read -p "Would you like to set your Anthropic API key now? (y/N): " set_api_key
+
+if [ "$set_api_key" = "y" ] || [ "$set_api_key" = "Y" ]; then
+    read -p "Enter your Anthropic API key: " api_key
+    if [ -n "$api_key" ]; then
+        # Update the API key in config.yaml
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            # macOS
+            sed -i '' "s/your_anthropic_api_key_here/$api_key/" "$APP_DIR/config.yaml"
+        else
+            # Linux
+            sed -i "s/your_anthropic_api_key_here/$api_key/" "$APP_DIR/config.yaml"
+        fi
+        echo "✓ API key configured in config.yaml"
+    else
+        echo "⚠️  No API key entered. You'll need to edit config.yaml manually."
+    fi
+else
+    echo "⚠️  Skipped API key setup. Remember to edit config.yaml before running the pipeline."
+fi
+
 # Create virtual environment
 cd $APP_DIR
 python3.12 -m venv venv
@@ -241,19 +280,6 @@ sudo systemctl daemon-reload
 sudo systemctl enable ainews-dashboard
 sudo systemctl start ainews-dashboard
 
-# Set up config.yaml
-echo ""
-echo "Setting up configuration..."
-if [ ! -f "$APP_DIR/config.yaml" ]; then
-    if [ -f "$APP_DIR/config.example.yaml" ]; then
-        cp "$APP_DIR/config.example.yaml" "$APP_DIR/config.yaml"
-        echo "✓ Created config.yaml from config.example.yaml"
-    else
-        echo "ERROR: config.example.yaml not found!"
-        exit 1
-    fi
-fi
-
 # Verify critical files exist
 echo ""
 echo "Verifying installation..."
@@ -274,7 +300,7 @@ echo "Python: $(python3.12 --version)"
 echo "Nginx: $(nginx -v 2>&1)"
 echo ""
 echo "Next steps:"
-echo "1. Edit config.yaml and add your Anthropic API key:"
+echo "1. If you didn't set your API key during setup, edit config.yaml:"
 echo "   nano $APP_DIR/config.yaml"
 echo ""
 echo "2. Check dashboard status:"
