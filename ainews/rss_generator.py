@@ -5,10 +5,10 @@ from email.utils import formatdate
 from typing import List
 from xml.sax.saxutils import escape
 
-from ainews.models import NewsItem
+from ainews.models import ProcessedNewsItem
 
 
-def generate_rss_feed(items: List[NewsItem], min_score: int = 8) -> str:
+def generate_rss_feed(items: List[ProcessedNewsItem], min_score: int = 8) -> str:
     """
     Generate an RSS 2.0 feed from news items.
 
