@@ -94,6 +94,23 @@ crontab -l
 cd /opt/ainews && ./venv/bin/python fetch_news.py
 ```
 
+### Adjust Pipeline Frequency
+
+By default, the pipeline runs **every 15 minutes**. To change this:
+
+```bash
+# Edit crontab
+crontab -e
+
+# Current: */15 * * * * (every 15 minutes)
+# Hourly: 0 * * * *
+# Every 30 min: */30 * * * *
+# Every 6 hours: 0 */6 * * *
+# Daily at 9am: 0 9 * * *
+```
+
+**Note:** More frequent runs = more API calls to Anthropic. Monitor your usage and costs.
+
 ---
 
 ## Option 2: Production AWS Deployment
@@ -218,7 +235,24 @@ aws apprunner create-service \
 
 #### 2.6: Create ECS Task for Pipeline
 
-Create ECS task definition and EventBridge schedule to run every 6 hours.
+Create an ECS task definition for the pipeline and an EventBridge Scheduler rule to run it every 15 minutes:
+
+```bash
+# Create EventBridge rule (every 15 minutes)
+aws events put-rule \
+  --name ainews-pipeline-schedule \
+  --schedule-expression "rate(15 minutes)" \
+  --state ENABLED
+
+# Add ECS task as target
+# (This requires creating ECS task definition first - see AWS ECS documentation)
+```
+
+**Adjust frequency:** Change `rate(15 minutes)` to:
+- `rate(30 minutes)` - Every 30 minutes
+- `rate(1 hour)` - Hourly
+- `rate(6 hours)` - Every 6 hours
+- `cron(0 9 * * ? *)` - Daily at 9am UTC
 
 #### 2.7: Set Up CloudFront Distribution
 

@@ -82,6 +82,19 @@ Fetches news from all enabled sources, deduplicates, scores with Claude, and gro
 python fetch_news.py
 ```
 
+**Automated scheduling:** When deployed (see [Deployment](#deployment)), the pipeline runs automatically every 15 minutes via cron. You can adjust the frequency in your crontab:
+
+```bash
+# Edit crontab to change schedule
+crontab -e
+
+# Examples:
+# */15 * * * *   - Every 15 minutes (default)
+# */30 * * * *   - Every 30 minutes
+# 0 */6 * * *    - Every 6 hours
+# 0 9 * * *      - Daily at 9am
+```
+
 ### Launch the dashboard
 
 ```bash
