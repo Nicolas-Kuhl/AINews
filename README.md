@@ -203,3 +203,137 @@ All settings are in `config.yaml` and can also be edited from the dashboard Sett
 | `lo_prompt` | Custom learning objectives prompt (optional) | Built-in default |
 | `rss_output_path` | Output path for RSS feed | `data/high_priority.xml` |
 | `rss_min_score` | Minimum score for RSS feed items | `8` |
+
+## Common Operations
+
+### Local Development
+
+**Clear the database:**
+```bash
+rm data/ainews.db
+```
+The database will be automatically recreated on the next run.
+
+**View pipeline logs:**
+```bash
+tail -f data/pipeline.log
+```
+
+**Check RSS feed locally:**
+```bash
+# After running the pipeline
+cat data/high_priority.xml
+
+# Or serve it locally
+python -m http.server 8080
+# Access at: http://localhost:8080/data/high_priority.xml
+```
+
+### EC2 Deployment Operations
+
+**Update application from GitHub:**
+```bash
+cd /opt/ainews
+git pull origin main
+sudo systemctl restart ainews-dashboard
+```
+
+**Clear the database:**
+```bash
+rm /opt/ainews/data/ainews.db
+```
+
+**Check cron job status:**
+```bash
+# View cron schedule
+crontab -l
+
+# Check if crond service is running (Amazon Linux 2023)
+sudo systemctl status crond
+
+# View recent cron execution logs
+grep CRON /var/log/cron | tail -20
+
+# Or check syslog (Ubuntu)
+grep CRON /var/log/syslog | tail -20
+```
+
+**View pipeline logs:**
+```bash
+# Real-time log viewing
+tail -f /opt/ainews/data/pipeline.log
+
+# View last 50 lines
+tail -50 /opt/ainews/data/pipeline.log
+
+# Search for errors
+grep -i error /opt/ainews/data/pipeline.log
+```
+
+**Manually run the pipeline:**
+```bash
+cd /opt/ainews
+./venv/bin/python fetch_news.py
+```
+
+**Check dashboard service:**
+```bash
+# Service status
+sudo systemctl status ainews-dashboard
+
+# View logs
+sudo journalctl -u ainews-dashboard -f
+
+# Restart service
+sudo systemctl restart ainews-dashboard
+
+# Stop/start service
+sudo systemctl stop ainews-dashboard
+sudo systemctl start ainews-dashboard
+```
+
+**Check Nginx:**
+```bash
+# Status
+sudo systemctl status nginx
+
+# Test configuration
+sudo nginx -t
+
+# Restart
+sudo systemctl restart nginx
+
+# View logs
+sudo tail -f /var/log/nginx/access.log
+sudo tail -f /var/log/nginx/error.log
+```
+
+**Access RSS feed:**
+```bash
+# Test locally on EC2
+curl http://localhost/rss/high_priority.xml
+
+# Access from browser
+http://YOUR_EC2_PUBLIC_IP/rss/high_priority.xml
+```
+
+**Troubleshooting:**
+```bash
+# Check all services are running
+sudo systemctl status ainews-dashboard nginx crond
+
+# Test if Streamlit is responding
+curl http://localhost:8501
+
+# Test if Nginx is proxying correctly
+curl http://localhost
+
+# Check disk space
+df -h
+
+# Check memory usage
+free -h
+
+# View Python errors in dashboard
+sudo journalctl -u ainews-dashboard --since "1 hour ago"
+```
