@@ -116,31 +116,30 @@ Restart=always
 WantedBy=multi-user.target
 EOF
 
-# Configure Nginx reverse proxy
-sudo tee /etc/nginx/sites-available/ainews > /dev/null <<'EOF'
-server {
-    # Listen on all network interfaces (accessible from internet)
-    listen 80 default_server;
-    listen [::]:80 default_server ipv6only=on;
-    server_name _;  # Replace with your domain if you have one
+# Configure Nginx reverse proxy (OS-specific)
+if [ "$OS" = "ubuntu" ]; then
+    echo "Configuring Nginx for Ubuntu (sites-available/sites-enabled pattern)..."
 
-    # Dashboard (proxies to Streamlit on localhost)
+    sudo tee /etc/nginx/sites-available/ainews > /dev/null <<'EOF'
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+
     location / {
         proxy_pass http://127.0.0.1:8501;
         proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
 
-    # RSS Feed
     location /rss {
         alias /opt/ainews/data;
         autoindex off;
-
         location ~ \.xml$ {
             add_header Content-Type application/rss+xml;
         }
@@ -148,10 +147,67 @@ server {
 }
 EOF
 
-# Enable Nginx site
-sudo ln -sf /etc/nginx/sites-available/ainews /etc/nginx/sites-enabled/
-sudo rm -f /etc/nginx/sites-enabled/default
+    sudo ln -sf /etc/nginx/sites-available/ainews /etc/nginx/sites-enabled/
+    sudo rm -f /etc/nginx/sites-enabled/default
+
+elif [ "$OS" = "amzn" ]; then
+    echo "Configuring Nginx for Amazon Linux 2023 (conf.d pattern)..."
+
+    # Create main nginx.conf
+    sudo tee /etc/nginx/nginx.conf > /dev/null <<'EOF'
+user nginx;
+worker_processes auto;
+error_log /var/log/nginx/error.log;
+pid /run/nginx.pid;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    access_log /var/log/nginx/access.log;
+    sendfile on;
+    keepalive_timeout 65;
+    include /etc/nginx/conf.d/*.conf;
+}
+EOF
+
+    # Create site config
+    sudo tee /etc/nginx/conf.d/ainews.conf > /dev/null <<'EOF'
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+
+    location / {
+        proxy_pass http://127.0.0.1:8501;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /rss {
+        alias /opt/ainews/data;
+        autoindex off;
+        location ~ \.xml$ {
+            add_header Content-Type application/rss+xml;
+        }
+    }
+}
+EOF
+fi
+
+# Test and restart Nginx
+echo "Testing Nginx configuration..."
 sudo nginx -t
+echo "Starting Nginx..."
+sudo systemctl enable nginx
 sudo systemctl restart nginx
 
 # Create cron job for fetch pipeline (every 15 minutes)
@@ -164,11 +220,29 @@ sudo systemctl enable ainews-dashboard
 sudo systemctl start ainews-dashboard
 
 # Set up config.yaml
+echo ""
 echo "Setting up configuration..."
 if [ ! -f "$APP_DIR/config.yaml" ]; then
-    cp "$APP_DIR/config.example.yaml" "$APP_DIR/config.yaml"
-    echo "IMPORTANT: Edit $APP_DIR/config.yaml and add your Anthropic API key!"
+    if [ -f "$APP_DIR/config.example.yaml" ]; then
+        cp "$APP_DIR/config.example.yaml" "$APP_DIR/config.yaml"
+        echo "✓ Created config.yaml from config.example.yaml"
+    else
+        echo "ERROR: config.example.yaml not found!"
+        exit 1
+    fi
 fi
+
+# Verify critical files exist
+echo ""
+echo "Verifying installation..."
+for file in "config.yaml" "dashboard.py" "fetch_news.py" "requirements.txt"; do
+    if [ -f "$APP_DIR/$file" ]; then
+        echo "✓ $file"
+    else
+        echo "✗ $file MISSING!"
+        exit 1
+    fi
+done
 
 echo ""
 echo "=== Setup Complete! ==="
