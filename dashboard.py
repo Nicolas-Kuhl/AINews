@@ -52,7 +52,7 @@ def main():
 
     # Tabs
     tab_releases, tab_industry, tab_settings, tab_about = st.tabs(
-        ["New Releases", "Industry", "Settings", "About"]
+        ["New Releases", "Industry News", "Settings", "About"]
     )
 
     # Prepare filter arguments
@@ -84,7 +84,7 @@ def main():
     # Industry tab
     with tab_industry:
         grouped = db.query_grouped(category="Industry", **filter_kwargs)
-        st.subheader(f"Industry ({len(grouped)})")
+        st.subheader(f"Industry News ({len(grouped)})")
         if not grouped:
             st.info("📰 No industry items found matching your filters.")
         else:

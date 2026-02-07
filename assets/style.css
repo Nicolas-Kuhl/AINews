@@ -14,12 +14,14 @@
 }
 
 /* ---- Global Styles ---- */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
 .stApp, [data-testid="stAppViewContainer"] {
     background-color: var(--bg-dark);
     color: var(--text-primary);
-    font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+    font-weight: 400;
+    line-height: 1.6;
 }
 
 /* ---- Sidebar ---- */
@@ -43,11 +45,26 @@ h1 {
     color: var(--text-primary) !important;
     font-weight: 700;
     letter-spacing: -0.02em;
+    margin-bottom: 1.5rem !important;
+    font-size: 2.25rem;
 }
 
-h2, h3 {
+h2 {
     color: var(--text-primary) !important;
     font-weight: 600;
+    letter-spacing: -0.01em;
+    font-size: 1.5rem;
+}
+
+h3 {
+    color: var(--text-primary) !important;
+    font-weight: 600;
+    font-size: 0.95rem;
+    margin-top: 1.5rem !important;
+    margin-bottom: 0.75rem !important;
+    letter-spacing: 0.01em;
+    text-transform: uppercase;
+    opacity: 0.9;
 }
 
 /* ---- Links ---- */
@@ -55,10 +72,18 @@ a {
     color: var(--accent-pink) !important;
     text-decoration: none;
     transition: color 0.15s ease;
+    font-weight: 500;
 }
 
 a:hover {
     color: #ff1675 !important;
+}
+
+/* News title links - clean and simple */
+.news-table-row a {
+    font-size: 0.95rem;
+    line-height: 1.5;
+    font-weight: 500;
 }
 
 /* ---- Tabs ---- */
@@ -80,28 +105,73 @@ a:hover {
 
 /* ---- Dividers ---- */
 hr {
-    border-color: var(--border-color) !important;
+    border: none !important;
+    height: 1px !important;
+    background-color: rgba(165, 170, 207, 0.2) !important;
+    margin: 2rem 0 !important;
 }
 
 /* ---- Buttons ---- */
+/* Expand/collapse arrow buttons - completely clean, no border */
+.stButton > button[key*="toggle_"] {
+    background: transparent !important;
+    color: var(--text-secondary) !important;
+    border: none !important;
+    border-radius: 0 !important;
+    font-weight: 400;
+    padding: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    transition: all 0.2s ease;
+    font-size: 1.3rem !important;
+    min-width: auto !important;
+    width: auto !important;
+    height: auto !important;
+}
+
+.stButton > button[key*="toggle_"]:hover {
+    color: var(--accent-pink) !important;
+    background: transparent !important;
+    border: none !important;
+    transform: scale(1.2);
+    box-shadow: none !important;
+}
+
+.stButton > button[key*="toggle_"]:focus {
+    box-shadow: none !important;
+    outline: none !important;
+    border: none !important;
+    background: transparent !important;
+}
+
+.stButton > button[key*="toggle_"]:active {
+    border: none !important;
+    background: transparent !important;
+}
+
 /* Base buttons - ghost style */
 .stButton > button {
     background: transparent !important;
     color: var(--text-secondary) !important;
-    border: none !important;
-    border-radius: 999px !important;
+    border: 1px solid rgba(165, 170, 207, 0.2) !important;
+    border-radius: 8px !important;
     font-weight: 600;
-    padding: 0.3rem 1.2rem !important;
+    padding: 0.4rem 1rem !important;
     box-shadow: none !important;
-    transition: color 0.15s ease, background-color 0.15s ease;
+    transition: all 0.2s ease;
+    font-size: 0.85rem;
 }
 
 .stButton > button:hover {
     color: var(--text-primary) !important;
+    background: rgba(165, 170, 207, 0.1) !important;
+    border-color: rgba(165, 170, 207, 0.4) !important;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
 }
 
 .stButton > button:focus {
-    box-shadow: none !important;
+    box-shadow: 0 0 0 2px rgba(231, 0, 94, 0.3) !important;
     outline: none !important;
 }
 
@@ -111,20 +181,31 @@ hr {
     background-color: var(--accent-pink) !important;
     color: var(--text-primary) !important;
     border: none !important;
-    border-radius: 6px !important;
-    padding: 0.2rem 0.8rem !important;
-    font-size: 0.8rem !important;
-    transition: background-color 0.15s ease, transform 0.1s ease;
+    border-radius: 4px !important;
+    padding: 0.125rem 0.5rem !important;
+    font-size: 0.5rem !important;
+    font-weight: 600;
+    transition: all 0.15s ease;
+    box-shadow: none !important;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
 }
 
 .stButton > button[kind="primary"]:hover {
     background-color: #ff1675 !important;
     color: var(--text-primary) !important;
-    transform: translateY(-1px);
+    box-shadow: none !important;
 }
 
 .stButton > button[kind="primary"]:active {
-    transform: translateY(0);
+    background-color: #c9004d !important;
+}
+
+/* Target text inside primary buttons specifically */
+.stButton > button[kind="primary"] p,
+.stButton > button[kind="primary"] span,
+.stButton > button[kind="primary"] div {
+    font-size: 0.5rem !important;
 }
 
 /* ---- Expander (Detail Panels) ---- */
@@ -172,32 +253,56 @@ input[type="text"]:focus, textarea:focus {
 
 /* ---- Info/Alert Boxes ---- */
 [data-testid="stAlert"] {
-    background-color: var(--bg-panel) !important;
+    background-color: rgba(30, 26, 54, 0.6) !important;
     color: var(--text-secondary) !important;
-    border: 1px solid var(--border-color) !important;
-    border-radius: 8px !important;
+    border-left: 3px solid #3b82f6 !important;
+    border-radius: 4px !important;
+    padding: 1rem 1.2rem !important;
+}
+
+/* Success boxes (green) */
+.stSuccess {
+    border-left-color: #10b981 !important;
+}
+
+/* Error boxes (red) */
+.stError {
+    border-left-color: #ef4444 !important;
 }
 
 /* ---- Code Tags ---- */
 code {
-    background-color: #2a2753 !important;
+    background-color: rgba(231, 0, 94, 0.15) !important;
     color: var(--accent-pink) !important;
-    padding: 0.1rem 0.4rem;
+    padding: 0.15rem 0.5rem;
     border-radius: 4px;
-    font-size: 0.85rem;
+    font-size: 0.75rem;
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-weight: 600;
+    border: 1px solid rgba(231, 0, 94, 0.25);
+    vertical-align: middle;
+    margin-left: 0.4rem;
 }
 
 /* ---- Captions ---- */
 .stCaption {
     color: var(--text-secondary) !important;
     font-size: 0.85rem !important;
+    opacity: 0.9;
+}
+
+/* Source and date captions in news table */
+.news-table-row .stCaption {
+    font-size: 0.8rem !important;
+    font-weight: 500;
+    letter-spacing: 0.02em;
 }
 
 /* ---- Containers & Columns ---- */
 [data-testid="stHorizontalBlock"] {
     gap: 0.3rem !important;
     align-items: center !important;
+    border: none !important;
 }
 
 [data-testid="stVerticalBlock"] > div {
@@ -205,13 +310,31 @@ code {
     padding-bottom: 0 !important;
 }
 
+[data-testid="stVerticalBlock"] {
+    border: none !important;
+}
+
+/* Ensure no borders on main content area */
+.stMarkdown {
+    border: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+/* Remove spacing between elements */
+.element-container {
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
 /* ---- News Table ---- */
+/* These old classes are no longer used but kept for reference */
 .news-table-header {
-    background-color: var(--bg-panel);
+    background-color: rgba(30, 26, 54, 0.6);
     border-radius: 8px 8px 0 0;
-    border-bottom: 2px solid var(--accent-pink);
-    padding: 0.6rem 0;
-    margin-bottom: 0;
+    border-bottom: 2px solid rgba(231, 0, 94, 0.3);
+    padding: 0.85rem 0.5rem;
+    margin-bottom: 0.25rem;
 }
 
 .news-table-header p,
@@ -220,33 +343,133 @@ code {
     font-weight: 600 !important;
     font-size: 0.75rem !important;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.1em;
 }
 
 .news-table-row {
-    border-bottom: 1px solid rgba(56, 52, 97, 0.3);
-    padding: 0.4rem 0;
-    transition: background-color 0.15s ease;
-    margin: 0;
+    padding: 0.85rem 0.5rem;
+    transition: all 0.15s ease;
+    margin: 0 !important;
+    border: none !important;
+    background-color: transparent;
+    display: block;
 }
 
 .news-table-row:hover {
-    background-color: rgba(30, 26, 54, 0.5);
+    background-color: rgba(30, 26, 54, 0.6);
+    border-left: 2px solid var(--accent-pink) !important;
+    border-top: none !important;
+    border-bottom: none !important;
+    border-right: none !important;
+    padding-left: calc(0.5rem - 2px);
 }
 
-/* Detail panel styling - no borders, just padding and background */
+/* Style containers for news rows with hover effect */
+[data-testid="stHorizontalBlock"]:has(.stButton) {
+    padding: 0.85rem 0.5rem;
+    transition: all 0.15s ease;
+    margin: 0 !important;
+    border: none !important;
+    background-color: transparent;
+    border-radius: 4px;
+}
+
+[data-testid="stHorizontalBlock"]:has(.stButton):hover {
+    background-color: rgba(30, 26, 54, 0.6);
+    border-left: 2px solid var(--accent-pink) !important;
+    padding-left: calc(0.5rem - 2px);
+}
+
+/* Detail panel styling - clean and minimal */
 .news-table-row + [data-testid="stVerticalBlock"] {
     background-color: rgba(30, 26, 54, 0.5);
-    padding: 1rem 1.5rem;
-    margin: 0 0 0.5rem 2.5rem;
+    padding: 2rem;
+    margin: 0.5rem 0 1rem 2.5rem;
     border-radius: 8px;
+    border-left: 3px solid var(--accent-pink);
 }
 
 .news-table-row p {
     margin: 0 !important;
+    line-height: 1.6;
+}
+
+/* Detail panel section headers - blue pills */
+.section-pill {
+    display: inline-block;
+    background-color: rgba(59, 130, 246, 0.2);
+    color: var(--text-primary);
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-top: 1.5rem;
+    margin-bottom: 0.75rem;
+    border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.news-table-row + [data-testid="stVerticalBlock"] h3 {
+    color: var(--text-primary) !important;
+    font-size: 0.85rem;
+    margin-top: 2rem;
+    margin-bottom: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 600;
+    opacity: 0.9;
+}
+
+.news-table-row + [data-testid="stVerticalBlock"] h3:first-child {
+    margin-top: 0;
+}
+
+/* Detail panel text content */
+.news-table-row + [data-testid="stVerticalBlock"] p {
+    color: var(--text-secondary) !important;
+    font-size: 0.75rem;
+    line-height: 1.6;
+    margin-bottom: 0.6rem;
+}
+
+/* Detail panel lists */
+.news-table-row + [data-testid="stVerticalBlock"] ul,
+.news-table-row + [data-testid="stVerticalBlock"] ol {
+    margin-left: 1.5rem;
+    margin-top: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.news-table-row + [data-testid="stVerticalBlock"] li {
+    color: var(--text-secondary) !important;
+    margin-bottom: 0.5rem;
+    line-height: 1.6;
+    font-size: 0.75rem;
+}
+
+/* Detail panel captions (metadata) */
+.news-table-row + [data-testid="stVerticalBlock"] .stCaption {
+    font-size: 0.75rem !important;
 }
 
 /* ---- Spinner ---- */
 [data-testid="stSpinner"] > div {
     border-color: var(--accent-pink) transparent transparent transparent !important;
+}
+
+/* ---- Acknowledge Animation ---- */
+@keyframes fadeOut {
+    from {
+        opacity: 1;
+        transform: translateX(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateX(-20px);
+    }
+}
+
+.news-row-fade-out {
+    animation: fadeOut 0.6s ease-out forwards;
 }

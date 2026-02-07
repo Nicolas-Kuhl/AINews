@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  dashboard:
+    build: .
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+      - ./config.yaml:/app/config.yaml
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    command: streamlit run dashboard.py
+    restart: unless-stopped
+
+  pipeline:
+    build: .
+    volumes:
+      - ./data:/app/data
+      - ./config.yaml:/app/config.yaml
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    command: python fetch_news.py
+    profiles:
+      - manual  # Don't start automatically, use: docker-compose run pipeline
+
+volumes:
+  data:

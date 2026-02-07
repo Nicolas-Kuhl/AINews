@@ -64,16 +64,15 @@ def generate_learning_objectives(cfg: dict, item):
 
 def _render_news_list(grouped_items, db, cfg):
     """Render list of grouped news items as a compact table."""
-    # Table header
-    st.markdown('<div class="news-table-header">', unsafe_allow_html=True)
-    h_cols = st.columns([0.3, 0.6, 5.5, 1.8, 1.2, 0.9])
-    h_cols[0].markdown("")  # Expand arrow column
-    h_cols[1].markdown("**Score**")
-    h_cols[2].markdown("**Title**")
-    h_cols[3].markdown("**Source**")
-    h_cols[4].markdown("**Date**")
-    h_cols[5].markdown("**Action**")
-    st.markdown('</div>', unsafe_allow_html=True)
+    # Table header (using container without HTML div wrapper)
+    with st.container():
+        h_cols = st.columns([0.5, 0.6, 5.3, 1.8, 1.2, 0.9])
+        h_cols[0].markdown("")  # Expand arrow column (wider for spacing)
+        h_cols[1].markdown("**Score**")
+        h_cols[2].markdown("**Title**")
+        h_cols[3].markdown("**Source**")
+        h_cols[4].markdown("**Date**")
+        h_cols[5].markdown("**Action**")
 
     # Render each news item
     for primary, related in grouped_items:
@@ -82,62 +81,92 @@ def _render_news_list(grouped_items, db, cfg):
 
 def _render_news_item(primary, related, db, cfg):
     """Render a single news item as a table row with expandable details."""
+    import time
+
     # Check if expanded
     expand_key = f"expand_{primary.id}"
     is_expanded = st.session_state.get(expand_key, False)
 
-    # Main row
-    st.markdown('<div class="news-table-row">', unsafe_allow_html=True)
-    cols = st.columns([0.3, 0.6, 5.5, 1.8, 1.2, 0.9])
+    # Check if item is being acknowledged (for animation)
+    ack_pending_key = f"ack_pending_{primary.id}"
+    ack_timestamp = st.session_state.get(ack_pending_key, None)
 
-    # Expand/collapse button (first column)
-    with cols[0]:
-        arrow = "▾" if is_expanded else "▸"
-        if st.button(arrow, key=f"toggle_{primary.id}"):
-            st.session_state[expand_key] = not is_expanded
-            st.rerun()
-
-    # Score pill with color coding
-    if primary.score >= 8:
-        pill_color = "#d32f2f"  # Red
-    elif primary.score >= 5:
-        pill_color = "#f39c12"  # Orange
+    # If enough time has passed, actually acknowledge
+    if ack_timestamp is not None:
+        elapsed = time.time() - ack_timestamp
+        if elapsed >= 0.6:  # 600ms animation duration
+            db.acknowledge(primary.id)
+            for rel in related:
+                if rel.id:
+                    db.acknowledge(rel.id)
+            # Clear the pending state
+            st.session_state.pop(ack_pending_key, None)
+            # Don't render this item anymore
+            return
+        # Still animating - render with fade class
+        is_acknowledging = True
     else:
-        pill_color = "#6b7280"  # Gray
+        is_acknowledging = False
 
-    cols[1].markdown(
-        f'<span style="background-color:{pill_color};color:#ffffff;padding:0.25rem 0.65rem;'
-        f'border-radius:12px;font-weight:700;font-size:0.85rem;display:inline-block;'
-        f'text-align:center;min-width:2rem;">{primary.score}</span>',
-        unsafe_allow_html=True
-    )
+    # Main row (using container without HTML div wrapper)
+    with st.container():
+        if is_acknowledging:
+            st.markdown(f'<div class="news-row-fade-out" id="row_{primary.id}">', unsafe_allow_html=True)
 
-    # Title as clickable link with related count
-    title_text = f"[{primary.title}]({primary.url})"
-    if related:
-        title_text += f" `+{len(related)}`"
-    cols[2].markdown(title_text)
+        cols = st.columns([0.5, 0.6, 5.3, 1.8, 1.2, 0.9])
 
-    # Source
-    cols[3].caption(primary.source)
-
-    # Date
-    date_str = primary.published.strftime("%b %d") if primary.published else "—"
-    cols[4].caption(date_str)
-
-    # Acknowledge button (always visible)
-    with cols[5]:
-        if not primary.acknowledged:
-            if st.button("Ack", key=f"ack_{primary.id}", type="primary"):
-                db.acknowledge(primary.id)
-                for rel in related:
-                    if rel.id:
-                        db.acknowledge(rel.id)
+        # Expand/collapse button (first column)
+        with cols[0]:
+            arrow = "▾" if is_expanded else "▸"
+            if st.button(arrow, key=f"toggle_{primary.id}"):
+                st.session_state[expand_key] = not is_expanded
                 st.rerun()
-        else:
-            st.markdown("✅")
 
-    st.markdown('</div>', unsafe_allow_html=True)
+        # Score pill with color coding
+        if primary.score >= 8:
+            pill_color = "#d32f2f"  # Red
+        elif primary.score >= 5:
+            pill_color = "#f39c12"  # Orange
+        else:
+            pill_color = "#6b7280"  # Gray
+
+        cols[1].markdown(
+            f'<span style="background-color:{pill_color};color:#ffffff;padding:0.25rem 0.65rem;'
+            f'border-radius:12px;font-weight:700;font-size:0.85rem;display:inline-block;'
+            f'text-align:center;min-width:2rem;">{primary.score}</span>',
+            unsafe_allow_html=True
+        )
+
+        # Title as clickable link with related count
+        title_text = f"[{primary.title}]({primary.url})"
+        if related:
+            title_text += f" `+{len(related)}`"
+        cols[2].markdown(title_text)
+
+        # Source
+        cols[3].caption(primary.source)
+
+        # Date
+        date_str = primary.published.strftime("%b %d") if primary.published else "—"
+        cols[4].caption(date_str)
+
+        # Acknowledge button (always visible)
+        with cols[5]:
+            if not primary.acknowledged:
+                if st.button("Ack", key=f"ack_{primary.id}", type="primary"):
+                    import time
+                    # Set timestamp to trigger animation
+                    st.session_state[ack_pending_key] = time.time()
+                    st.rerun()
+            else:
+                st.markdown("✅")
+
+        if is_acknowledging:
+            st.markdown('</div>', unsafe_allow_html=True)
+            # Use st.empty() to trigger rerun after delay
+            import time
+            time.sleep(0.65)
+            st.rerun()
 
     # Expandable details (only shown when expanded)
     if is_expanded:
@@ -148,35 +177,47 @@ def _render_item_details(primary, related, db, cfg):
     """Render detailed content inside expander."""
     # Summary
     if primary.summary:
-        st.markdown("**Summary**")
+        st.markdown('<span class="section-pill">Summary</span>', unsafe_allow_html=True)
         st.markdown(primary.summary)
         st.markdown("")
 
     # Score reasoning
     if primary.score_reasoning:
-        st.markdown("**Score Reasoning**")
+        st.markdown('<span class="section-pill">Score Reasoning</span>', unsafe_allow_html=True)
         st.markdown(primary.score_reasoning)
         st.markdown("")
 
     # Learning objectives
-    st.markdown("**Learning Objectives**")
+    st.markdown('<span class="section-pill">Learning Objectives</span>', unsafe_allow_html=True)
     _render_learning_objectives(primary, cfg, db)
 
-    # Metadata
+    # Metadata (no heading)
     st.markdown("---")
     col1, col2, col3 = st.columns(3)
-    col1.caption(f"Category: **{primary.category}**")
-    col2.caption(f"Fetched via: **{primary.fetched_via}**")
+    col1.caption(f"**Category:** {primary.category}")
+    col2.caption(f"**Fetched via:** {primary.fetched_via}")
     if primary.published:
-        col3.caption(f"Published: **{primary.published.strftime('%Y-%m-%d')}**")
+        col3.caption(f"**Published:** {primary.published.strftime('%Y-%m-%d')}")
 
     # Related sources
     if related:
         st.markdown("---")
-        st.markdown(f"**All Sources ({len([primary] + related)})**")
-        for item in [primary] + related:
-            date_str = item.published.strftime("%b %d") if item.published else ""
-            st.markdown(f"- [{item.title}]({item.url}) · {item.source} · {date_str} · Score: {item.score}")
+        st.markdown(f"### All Sources ({len([primary] + related)} total)")
+        for idx, item in enumerate([primary] + related, 1):
+            date_str = item.published.strftime("%b %d") if item.published else "—"
+
+            # Score pill color
+            if item.score >= 8:
+                score_badge = f'<span style="background-color:#d32f2f;color:#fff;padding:0.1rem 0.4rem;border-radius:6px;font-size:0.7rem;font-weight:700;">{item.score}</span>'
+            elif item.score >= 5:
+                score_badge = f'<span style="background-color:#f39c12;color:#fff;padding:0.1rem 0.4rem;border-radius:6px;font-size:0.7rem;font-weight:700;">{item.score}</span>'
+            else:
+                score_badge = f'<span style="background-color:#6b7280;color:#fff;padding:0.1rem 0.4rem;border-radius:6px;font-size:0.7rem;font-weight:700;">{item.score}</span>'
+
+            st.markdown(
+                f"{idx}. [{item.title}]({item.url}) · **{item.source}** · {date_str} · {score_badge}",
+                unsafe_allow_html=True
+            )
 
 
 def _render_learning_objectives(primary, cfg, db):
@@ -187,11 +228,12 @@ def _render_learning_objectives(primary, cfg, db):
 
     # Show badge if generated with Opus
     if primary.lo_generated_with_opus and not is_generating:
-        st.caption("✨ Generated with Opus")
+        st.caption("Generated with Claude Opus 4.6")
+        st.markdown("")
 
     # Generate button
     if not is_generating and not primary.lo_generated_with_opus:
-        if st.button("⚡ Generate with Opus", key=f"gen_btn_{primary.id}"):
+        if st.button("Generate with Opus", key=f"gen_btn_{primary.id}", type="primary"):
             st.session_state[lo_gen_key] = True
             st.rerun()
 
@@ -202,7 +244,7 @@ def _render_learning_objectives(primary, cfg, db):
 
     # Generate or display
     if is_generating:
-        with st.spinner("Generating with Claude Opus..."):
+        with st.spinner("Generating learning objectives with Claude Opus..."):
             try:
                 new_lo = generate_learning_objectives(cfg, primary)
                 db.update_learning_objectives(primary.id, new_lo, generated_with_opus=True)
@@ -216,14 +258,62 @@ def _render_learning_objectives(primary, cfg, db):
         if primary.learning_objectives:
             st.markdown(primary.learning_objectives)
         else:
-            st.caption("_No learning objectives yet — click Generate with Opus to create them._")
+            st.info("Click **Generate with Opus** to create tailored learning objectives for this news item.")
 
 
 def _render_settings_tab(cfg, db, project_root):
     """Render the Settings tab."""
+    # RSS Feed Generator
+    st.subheader("RSS Feed")
+    st.caption("Generate an RSS feed of high-priority news items (score 8+) for your RSS reader.")
+
+    rss_col1, rss_col2 = st.columns([3, 1])
+    with rss_col1:
+        min_rss_score = st.slider(
+            "Minimum score for RSS feed",
+            min_value=1,
+            max_value=10,
+            value=8,
+            help="Only items with this score or higher will be included in the RSS feed"
+        )
+
+    with rss_col2:
+        if st.button("Generate RSS", key="generate_rss", type="primary"):
+            from ainews.rss_generator import generate_rss_feed
+
+            # Query items for RSS feed
+            items = db.query_items(
+                min_score=min_rss_score,
+                show_acknowledged=False,
+                sort_by="published",
+                sort_dir="DESC"
+            )
+
+            # Generate RSS XML
+            rss_xml = generate_rss_feed(items, min_score=min_rss_score)
+
+            # Store in session state for download
+            st.session_state['rss_feed_xml'] = rss_xml
+            st.session_state['rss_item_count'] = len([item for item in items if item.score >= min_rss_score])
+
+    # Show download button if RSS was generated
+    if 'rss_feed_xml' in st.session_state:
+        item_count = st.session_state.get('rss_item_count', 0)
+        st.success(f"RSS feed generated with {item_count} items!")
+        st.download_button(
+            label="Download RSS Feed",
+            data=st.session_state['rss_feed_xml'],
+            file_name=f"ainews_score{min_rss_score}plus.xml",
+            mime="application/rss+xml",
+            key="download_rss"
+        )
+        st.caption("💡 Save this file and add it to your RSS reader, or host it on a web server for automatic updates.")
+
+    st.divider()
+
     # Pipeline Runner
     st.subheader("Fetch Pipeline")
-    st.caption("Run the full pipeline: fetch RSS & search, deduplicate, score with Claude, and group.")
+    st.caption("Run the full pipeline: fetch RSS & search, deduplicate, score with Claude, group, and generate RSS feed.")
 
     log_file = project_root / "data" / "pipeline.log"
     if st.button("Run Pipeline", key="run_pipeline", type="primary"):

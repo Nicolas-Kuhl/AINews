@@ -90,11 +90,52 @@ streamlit run dashboard.py
 
 The dashboard opens at `http://localhost:8501`. From there you can:
 
-- Browse scored news in the **New Releases** and **Industry** tabs
+- Browse scored news in the **New Releases** and **Industry News** tabs
 - Expand any row to see the summary, score reasoning, and learning objectives
 - Click **Generate With Opus** to create deep learning objectives for any item
 - Use the **Settings** tab to run the pipeline, manage sources, and edit prompts
 - Filter by score range, date, and sort order in the sidebar
+
+### Generate RSS Feed
+
+You can generate an RSS feed of high-priority items (score 8+) for use in RSS readers:
+
+**Via Dashboard:**
+1. Go to the **Settings** tab
+2. Adjust the minimum score slider (default: 8)
+3. Click **Generate RSS**
+4. Download the XML file
+
+**Via Command Line:**
+```bash
+python generate_rss_feed.py --min-score 8 --output data/high_priority.xml
+```
+
+To serve the feed for RSS readers:
+```bash
+# Start a simple HTTP server
+python -m http.server 8080
+
+# Subscribe in your RSS reader
+http://localhost:8080/data/high_priority.xml
+```
+
+Or upload the XML file to your web hosting and subscribe to that URL.
+
+## Deployment
+
+### AWS Deployment
+
+See **[deployment/QUICKSTART.md](deployment/QUICKSTART.md)** for deployment options:
+
+- **🚀 Simple (5 min):** EC2 deployment - [Setup Script](deployment/aws-ec2-setup.sh)
+- **🏢 Production (30 min):** App Runner + ECS - [Full Guide](deployment/README-AWS.md)
+- **🐳 Local Testing:** Docker - See `docker-compose.yml`
+
+Quick start with Docker:
+```bash
+docker-compose up dashboard
+```
 
 ## Project Structure
 
@@ -102,12 +143,14 @@ The dashboard opens at `http://localhost:8501`. From there you can:
 AINews/
 ├── fetch_news.py              # CLI pipeline entry point
 ├── dashboard.py               # Streamlit dashboard
+├── generate_rss_feed.py       # Generate RSS feed for high-priority items
 ├── config.example.yaml        # Example configuration (copy to config.yaml)
 ├── requirements.txt           # Python dependencies
 ├── data/                      # SQLite database and logs (gitignored)
 └── ainews/                    # Core package
     ├── config.py              # Config loader / saver
     ├── models.py              # Data models (RawNewsItem, ProcessedNewsItem)
+    ├── rss_generator.py       # RSS feed XML generator
     ├── fetchers/
     │   ├── rss_fetcher.py     # RSS/auto-detect feed fetcher
     │   ├── web_page_fetcher.py # Playwright browser fetcher
@@ -136,3 +179,5 @@ All settings are in `config.yaml` and can also be edited from the dashboard Sett
 | `scoring_batch_size` | Items per Claude API request | `20` |
 | `scoring_prompt` | Custom scoring prompt (optional) | Built-in default |
 | `lo_prompt` | Custom learning objectives prompt (optional) | Built-in default |
+| `rss_output_path` | Output path for RSS feed | `data/high_priority.xml` |
+| `rss_min_score` | Minimum score for RSS feed items | `8` |

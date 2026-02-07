@@ -7,12 +7,15 @@ build/
 
 # Virtual environment
 .venv/
+.venv-*/
 venv/
 env/
+ENV/
 
 # Data
 data/*.db
 data/*.log
+data/*.xml
 
 # Config with secrets
 config.yaml
