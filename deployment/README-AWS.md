@@ -36,36 +36,55 @@ Cron Job → Fetch Pipeline
 
 ### Step 2: Deploy Application
 
-SSH into your instance and run:
+SSH into your instance and clone the repository:
 
 ```bash
-# Upload your code (use 'ubuntu' for Ubuntu, 'ec2-user' for Amazon Linux)
-scp -r ~/AINews ubuntu@YOUR_EC2_IP:/home/ubuntu/
-# OR for Amazon Linux:
-# scp -r ~/AINews ec2-user@YOUR_EC2_IP:/home/ec2-user/
-
-# SSH into instance
+# SSH into instance (use 'ubuntu' for Ubuntu, 'ec2-user' for Amazon Linux)
 ssh ubuntu@YOUR_EC2_IP
 # OR for Amazon Linux:
 # ssh ec2-user@YOUR_EC2_IP
 
-# Run setup script (adjust path based on your user)
-cd ~/AINews
-chmod +x deployment/aws-ec2-setup.sh
-./deployment/aws-ec2-setup.sh
+# Clone repository to /opt/ainews (lowercase 'ainews' is important)
+sudo mkdir -p /opt
+cd /opt
+sudo git clone https://github.com/Nicolas-Kuhl/AINews ainews
+sudo chown -R $USER:$USER /opt/ainews
+
+# Run setup script
+cd /opt/ainews/deployment
+chmod +x aws-ec2-setup.sh
+./aws-ec2-setup.sh
 ```
 
-### Step 3: Configure
+**Important Notes:**
+- The repository **must** be cloned to `/opt/ainews` (lowercase)
+- The setup script will prompt you to enter your Anthropic API key during installation
+- If you skip the API key prompt, you can edit `config.yaml` manually later
+
+### Step 3: Verify Installation
 
 ```bash
-# Edit config with your API key
-nano /opt/ainews/config.yaml
+# Check dashboard status
+sudo systemctl status ainews-dashboard
 
-# Restart dashboard
+# View logs
+sudo journalctl -u ainews-dashboard -f
+
+# Test manually
+cd /opt/ainews && ./venv/bin/python fetch_news.py
+```
+
+### Step 4: Update Application (Future Updates)
+
+To update the application after initial deployment:
+
+```bash
+cd /opt/ainews
+git pull origin main
 sudo systemctl restart ainews-dashboard
 ```
 
-### Step 4: Add Authentication (Recommended)
+### Step 5: Add Authentication (Recommended)
 
 **⚠️ Important:** The dashboard has no authentication by default. Anyone with the URL can access it.
 
@@ -77,7 +96,7 @@ chmod +x deployment/add-basic-auth.sh
 
 See **[SECURITY.md](SECURITY.md)** for all authentication options.
 
-### Step 5: Configure Security Group ⚠️
+### Step 6: Configure Security Group ⚠️
 
 **CRITICAL:** Your EC2 security group must allow inbound HTTP traffic!
 

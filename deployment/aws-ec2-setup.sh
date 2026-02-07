@@ -51,36 +51,40 @@ else
     exit 1
 fi
 
-# Create application directory
+# Verify repository is cloned to /opt/ainews
 APP_DIR="/opt/ainews"
-sudo mkdir -p $APP_DIR
-sudo chown $USER:$USER $APP_DIR
 
-# Get the directory where the script is located
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." && pwd )"
-
-echo "Copying application files from $PROJECT_ROOT to $APP_DIR..."
-
-# Copy application files (excluding venv, data, etc.)
-rsync -av --exclude='.git' \
-    --exclude='venv' \
-    --exclude='.venv*' \
-    --exclude='data/*.db' \
-    --exclude='data/*.log' \
-    --exclude='data/*.xml' \
-    --exclude='__pycache__' \
-    --exclude='*.pyc' \
-    --exclude='.DS_Store' \
-    --exclude='config.yaml' \
-    "$PROJECT_ROOT/" "$APP_DIR/"
-
-# Verify requirements.txt exists
-if [ ! -f "$APP_DIR/requirements.txt" ]; then
-    echo "ERROR: requirements.txt not found in $APP_DIR"
-    echo "Please ensure you're running this script from the project directory."
+echo ""
+echo "Checking for repository at $APP_DIR..."
+if [ ! -d "$APP_DIR" ]; then
+    echo "ERROR: Repository not found at $APP_DIR"
+    echo ""
+    echo "Please clone the repository first:"
+    echo "  sudo mkdir -p /opt"
+    echo "  cd /opt"
+    echo "  sudo git clone https://github.com/Nicolas-Kuhl/AINews ainews"
+    echo "  sudo chown -R \$USER:\$USER /opt/ainews"
+    echo ""
+    echo "Then run this script again from /opt/ainews/deployment:"
+    echo "  cd /opt/ainews/deployment"
+    echo "  ./aws-ec2-setup.sh"
     exit 1
 fi
+
+# Verify we're in the repository
+if [ ! -f "$APP_DIR/requirements.txt" ]; then
+    echo "ERROR: requirements.txt not found in $APP_DIR"
+    echo "The directory exists but doesn't appear to contain the AINews repository."
+    echo "Please ensure the repository is properly cloned to $APP_DIR"
+    exit 1
+fi
+
+if [ ! -d "$APP_DIR/.git" ]; then
+    echo "WARNING: $APP_DIR is not a git repository"
+    echo "Updates via 'git pull' will not work."
+fi
+
+echo "✓ Repository found at $APP_DIR"
 
 # Set up config.yaml from example
 echo ""
@@ -313,7 +317,12 @@ echo "4. Run the pipeline manually:"
 echo "   cd $APP_DIR && ./venv/bin/python fetch_news.py"
 echo ""
 echo "5. Access dashboard at: http://YOUR_EC2_PUBLIC_IP/"
-echo "6. RSS feed available at: http://YOUR_EC2_PUBLIC_IP/rss/high_priority.xml"
+echo "   RSS feed available at: http://YOUR_EC2_PUBLIC_IP/rss/high_priority.xml"
+echo ""
+echo "To update the application in the future:"
+echo "   cd $APP_DIR"
+echo "   git pull origin main"
+echo "   sudo systemctl restart ainews-dashboard"
 echo ""
 echo "⚠️  IMPORTANT - Security Group Configuration:"
 echo "=================================================="

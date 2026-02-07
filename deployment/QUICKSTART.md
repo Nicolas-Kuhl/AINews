@@ -13,25 +13,27 @@ Choose your deployment method based on your needs:
    # Security group: Allow ports 22, 80, 443
    ```
 
-2. **Upload code and run setup:**
+2. **Clone repository and run setup:**
    ```bash
-   # For Ubuntu:
-   scp -r ~/AINews ubuntu@YOUR_EC2_IP:/home/ubuntu/
-   ssh ubuntu@YOUR_EC2_IP
+   # SSH into instance (Ubuntu or Amazon Linux)
+   ssh ubuntu@YOUR_EC2_IP  # or ec2-user@YOUR_EC2_IP
 
-   # For Amazon Linux:
-   # scp -r ~/AINews ec2-user@YOUR_EC2_IP:/home/ec2-user/
-   # ssh ec2-user@YOUR_EC2_IP
+   # Clone to /opt/ainews (lowercase)
+   sudo mkdir -p /opt
+   cd /opt
+   sudo git clone https://github.com/Nicolas-Kuhl/AINews ainews
+   sudo chown -R $USER:$USER /opt/ainews
 
-   cd ~/AINews
-   chmod +x deployment/aws-ec2-setup.sh
-   ./deployment/aws-ec2-setup.sh  # Auto-detects OS
+   # Run setup (auto-detects OS, prompts for API key)
+   cd /opt/ainews/deployment
+   chmod +x aws-ec2-setup.sh
+   ./aws-ec2-setup.sh
    ```
 
-3. **Add API key:**
+3. **Configure (if needed):**
    ```bash
+   # If you skipped API key during setup:
    nano /opt/ainews/config.yaml
-   # Add your anthropic_api_key
    sudo systemctl restart ainews-dashboard
    ```
 
