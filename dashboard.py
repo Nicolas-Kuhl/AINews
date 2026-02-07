@@ -40,8 +40,17 @@ def check_authentication():
         auth_config['cookie']['expiry_days']
     )
 
-    # Login form
-    name, authentication_status, username = authenticator.login('Login', 'main')
+    # Login form (new API - uses session state)
+    try:
+        authenticator.login(location='main')
+    except Exception as e:
+        st.error(f"Authentication error: {e}")
+        st.stop()
+
+    # Check authentication status from session state
+    authentication_status = st.session_state.get('authentication_status')
+    name = st.session_state.get('name')
+    username = st.session_state.get('username')
 
     if authentication_status == False:
         st.error('Username/password is incorrect')
@@ -55,7 +64,7 @@ def check_authentication():
     if authentication_status:
         with st.sidebar:
             st.write(f'Welcome **{name}**')
-            authenticator.logout('Logout', 'sidebar')
+            authenticator.logout(location='sidebar')
 
     return True
 

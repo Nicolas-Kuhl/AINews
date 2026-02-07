@@ -27,15 +27,16 @@ def main():
         if proceed.lower() != 'y':
             return
 
-    # Generate hash
+    # Generate hash using new API
     print("\nGenerating hash...")
-    hashed = stauth.Hasher([password]).generate()
+    import bcrypt
+    hashed = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
     print("\n" + "=" * 60)
     print("Generated Hash:")
     print("=" * 60)
     print()
-    print(hashed[0])
+    print(hashed)
     print()
     print("Copy this hash to your auth_config.yaml file")
     print("=" * 60)
