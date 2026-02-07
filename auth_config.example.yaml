@@ -11,7 +11,7 @@ credentials:
       name: Admin User
       # This is the hash for password: "changeme123"
       # Generate your own with: python scripts/generate_password_hash.py
-      password: $2b$12$KIXQQqhHKq8yVfQjat18/.OjHRY0cL4QJVW8jOGz7MhkRfMJI5Yxm
+      password: $2b$12$WiP3aa8evuV22jHKwfmz/u70/RNvqmSDz0dDl2oSSxsV2lD9QayXW
 
 cookie:
   # Session expiry in days
