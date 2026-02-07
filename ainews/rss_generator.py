@@ -1,6 +1,6 @@
 """RSS feed generator for high-priority AI news items."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from email.utils import formatdate
 from typing import List
 from xml.sax.saxutils import escape
@@ -23,7 +23,9 @@ def generate_rss_feed(items: List[ProcessedNewsItem], min_score: int = 8) -> str
     filtered_items = [item for item in items if item.score >= min_score]
 
     # Sort by published date (newest first)
-    filtered_items.sort(key=lambda x: x.published or datetime.min, reverse=True)
+    # Use timezone-aware min datetime to handle comparison with timezone-aware published dates
+    min_datetime = datetime.min.replace(tzinfo=timezone.utc)
+    filtered_items.sort(key=lambda x: x.published or min_datetime, reverse=True)
 
     # Limit to most recent 50 items
     filtered_items = filtered_items[:50]
