@@ -64,7 +64,7 @@ The AI News Aggregator is a Python-based news curation system that automatically
 
 | Component | Technology | Version | Purpose |
 |-----------|-----------|---------|---------|
-| **Language** | Python | 3.9+ | Core application |
+| **Language** | Python | 3.10+ | Core application |
 | **UI Framework** | Streamlit | Latest | Interactive dashboard |
 | **Database** | SQLite | 3.x | Local data storage |
 | **AI/ML** | Anthropic Claude API | 4.5/4.6 | Scoring and LO generation |

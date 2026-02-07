@@ -14,7 +14,7 @@ A curated AI news dashboard that aggregates, scores, and groups news from multip
 
 ## Prerequisites
 
-- Python 3.11+
+- Python 3.10+
 - An [Anthropic API key](https://console.anthropic.com/)
 
 ## Setup
