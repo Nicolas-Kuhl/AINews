@@ -13,7 +13,7 @@ def generate_rss_feed(items: List[ProcessedNewsItem], min_score: int = 8) -> str
     Generate an RSS 2.0 feed from news items.
 
     Args:
-        items: List of NewsItem objects to include
+        items: List of ProcessedNewsItem objects to include
         min_score: Minimum score threshold (default: 8)
 
     Returns:
@@ -53,8 +53,8 @@ def generate_rss_feed(items: List[ProcessedNewsItem], min_score: int = 8) -> str
     return '\n'.join(rss_parts)
 
 
-def _item_to_rss(item: NewsItem) -> List[str]:
-    """Convert a NewsItem to RSS item XML."""
+def _item_to_rss(item: ProcessedNewsItem) -> List[str]:
+    """Convert a ProcessedNewsItem to RSS item XML."""
     # Escape HTML content
     title = escape(item.title)
     source = escape(item.source)
