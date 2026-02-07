@@ -8,6 +8,29 @@ echo "  AI News Aggregator - Authentication Setup"
 echo "=================================================="
 echo ""
 
+# Detect if we're in a virtual environment or on EC2
+PYTHON_BIN="python"
+PIP_BIN="pip"
+
+# Check for /opt/ainews venv (EC2 deployment)
+if [ -f "/opt/ainews/venv/bin/python" ]; then
+    PYTHON_BIN="/opt/ainews/venv/bin/python"
+    PIP_BIN="/opt/ainews/venv/bin/pip"
+    echo "Detected EC2 deployment - using virtual environment"
+# Check for local venv
+elif [ -f "venv/bin/python" ]; then
+    PYTHON_BIN="venv/bin/python"
+    PIP_BIN="venv/bin/pip"
+    echo "Detected local virtual environment"
+# Check if we're already in an activated venv
+elif [ -n "$VIRTUAL_ENV" ]; then
+    echo "Using activated virtual environment"
+else
+    echo "Using system Python (consider using a virtual environment)"
+fi
+
+echo ""
+
 # Check if auth_config.yaml already exists
 if [ -f "auth_config.yaml" ]; then
     echo "⚠️  auth_config.yaml already exists!"
@@ -20,9 +43,9 @@ fi
 
 # Install streamlit-authenticator if needed
 echo "[1/4] Checking dependencies..."
-if ! python -c "import streamlit_authenticator" 2>/dev/null; then
+if ! $PYTHON_BIN -c "import streamlit_authenticator" 2>/dev/null; then
     echo "Installing streamlit-authenticator..."
-    pip install streamlit-authenticator
+    $PIP_BIN install streamlit-authenticator
 else
     echo "✓ streamlit-authenticator already installed"
 fi
@@ -35,7 +58,7 @@ cp auth_config.example.yaml auth_config.yaml
 # Generate random cookie key
 echo ""
 echo "[3/4] Generating secure cookie key..."
-COOKIE_KEY=$(python -c "import secrets; print(secrets.token_urlsafe(32))")
+COOKIE_KEY=$($PYTHON_BIN -c "import secrets; print(secrets.token_urlsafe(32))")
 if [[ "$OSTYPE" == "darwin"* ]]; then
     # macOS
     sed -i '' "s/change_this_to_a_random_string_32_characters_long/$COOKIE_KEY/" auth_config.yaml
@@ -52,7 +75,7 @@ echo "The default password is 'changeme123'"
 read -p "Would you like to set a custom password now? (y/N): " set_password
 
 if [ "$set_password" = "y" ]; then
-    python scripts/generate_password_hash.py
+    $PYTHON_BIN scripts/generate_password_hash.py
     echo ""
     echo "Copy the hash above and paste it into auth_config.yaml"
     echo "at line 10 (replace the existing password hash)"
