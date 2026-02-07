@@ -8,17 +8,24 @@ Choose your deployment method based on your needs:
 
 1. **Launch EC2 instance:**
    ```bash
-   # Ubuntu 22.04, t3.small, 20GB storage
+   # Ubuntu 22.04+ or Amazon Linux 2023
+   # Instance: t3.small, 20GB storage
    # Security group: Allow ports 22, 80, 443
    ```
 
 2. **Upload code and run setup:**
    ```bash
+   # For Ubuntu:
    scp -r ~/AINews ubuntu@YOUR_EC2_IP:/home/ubuntu/
    ssh ubuntu@YOUR_EC2_IP
-   cd /home/ubuntu/AINews
+
+   # For Amazon Linux:
+   # scp -r ~/AINews ec2-user@YOUR_EC2_IP:/home/ec2-user/
+   # ssh ec2-user@YOUR_EC2_IP
+
+   cd ~/AINews
    chmod +x deployment/aws-ec2-setup.sh
-   ./deployment/aws-ec2-setup.sh
+   ./deployment/aws-ec2-setup.sh  # Auto-detects OS
    ```
 
 3. **Add API key:**

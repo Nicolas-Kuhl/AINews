@@ -1,21 +1,51 @@
 #!/bin/bash
 # AWS EC2 Deployment Script for AI News Aggregator
-# Run this on a fresh Ubuntu 22.04 EC2 instance
+# Supports: Ubuntu 22.04+ and Amazon Linux 2023
 
 set -e
 
 echo "=== AI News Aggregator - EC2 Setup ==="
 
-# Update system
-sudo apt update && sudo apt upgrade -y
+# Detect OS
+if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    OS=$ID
+    VERSION=$VERSION_ID
+else
+    echo "ERROR: Cannot detect OS. This script supports Ubuntu 22.04+ and Amazon Linux 2023."
+    exit 1
+fi
 
-# Install Python 3.12
-sudo add-apt-repository ppa:deadsnakes/ppa -y
-sudo apt update
-sudo apt install python3.12 python3.12-venv python3.12-dev -y
+echo "Detected OS: $OS $VERSION"
 
-# Install Nginx
-sudo apt install nginx -y
+# Update system and install packages based on OS
+if [ "$OS" = "ubuntu" ]; then
+    echo "Installing packages for Ubuntu..."
+    sudo apt update && sudo apt upgrade -y
+
+    # Install Python 3.12
+    sudo add-apt-repository ppa:deadsnakes/ppa -y
+    sudo apt update
+    sudo apt install python3.12 python3.12-venv python3.12-dev -y
+
+    # Install Nginx
+    sudo apt install nginx -y
+
+elif [ "$OS" = "amzn" ]; then
+    echo "Installing packages for Amazon Linux 2023..."
+    sudo dnf update -y
+
+    # Install Python 3.12 (available in AL2023 repos)
+    sudo dnf install -y python3.12 python3.12-pip python3.12-devel
+
+    # Install Nginx
+    sudo dnf install -y nginx
+
+else
+    echo "ERROR: Unsupported OS: $OS"
+    echo "This script supports Ubuntu 22.04+ and Amazon Linux 2023 only."
+    exit 1
+fi
 
 # Create application directory
 APP_DIR="/opt/ainews"
@@ -38,7 +68,14 @@ pip install -r requirements.txt
 
 # Install Playwright browsers
 playwright install chromium
-playwright install-deps
+
+# Install Playwright system dependencies (OS-specific)
+if [ "$OS" = "ubuntu" ]; then
+    playwright install-deps chromium
+elif [ "$OS" = "amzn" ]; then
+    # AL2023 may need manual dependency installation
+    playwright install-deps chromium || echo "WARNING: Some Playwright dependencies may need manual installation"
+fi
 
 # Create systemd service for Streamlit
 sudo tee /etc/systemd/system/ainews-dashboard.service > /dev/null <<EOF
@@ -114,6 +151,10 @@ fi
 
 echo ""
 echo "=== Setup Complete! ==="
+echo ""
+echo "OS: $OS $VERSION"
+echo "Python: $(python3.12 --version)"
+echo "Nginx: $(nginx -v 2>&1)"
 echo ""
 echo "Next steps:"
 echo "1. Edit config.yaml and add your Anthropic API key:"

@@ -24,26 +24,33 @@ Cron Job → Fetch Pipeline
 
 ### Step 1: Launch EC2 Instance
 
-1. **Launch Ubuntu 22.04 instance:**
+1. **Launch an EC2 instance:**
+   - **AMI:** Ubuntu 22.04 LTS or Amazon Linux 2023
    - Instance type: `t3.small` (2 vCPU, 2GB RAM)
    - Storage: 20GB gp3
    - Security group: Allow inbound SSH (22), HTTP (80), HTTPS (443)
 
 2. **Allocate Elastic IP** (optional but recommended)
 
+**Note:** The deployment script auto-detects your OS and uses the appropriate package manager (apt for Ubuntu, dnf for AL2023).
+
 ### Step 2: Deploy Application
 
 SSH into your instance and run:
 
 ```bash
-# Upload your code
+# Upload your code (use 'ubuntu' for Ubuntu, 'ec2-user' for Amazon Linux)
 scp -r ~/AINews ubuntu@YOUR_EC2_IP:/home/ubuntu/
+# OR for Amazon Linux:
+# scp -r ~/AINews ec2-user@YOUR_EC2_IP:/home/ec2-user/
 
 # SSH into instance
 ssh ubuntu@YOUR_EC2_IP
+# OR for Amazon Linux:
+# ssh ec2-user@YOUR_EC2_IP
 
-# Run setup script
-cd /home/ubuntu/AINews
+# Run setup script (adjust path based on your user)
+cd ~/AINews
 chmod +x deployment/aws-ec2-setup.sh
 ./deployment/aws-ec2-setup.sh
 ```
