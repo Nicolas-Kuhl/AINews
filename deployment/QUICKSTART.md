@@ -28,11 +28,19 @@ Choose your deployment method based on your needs:
    sudo systemctl restart ainews-dashboard
    ```
 
-4. **Access:**
-   - Dashboard: `http://YOUR_EC2_IP/`
+4. **Add authentication:**
+   ```bash
+   chmod +x deployment/add-basic-auth.sh
+   ./deployment/add-basic-auth.sh
+   ```
+
+5. **Access:**
+   - Dashboard: `http://YOUR_EC2_IP/` (login: admin)
    - RSS: `http://YOUR_EC2_IP/rss/high_priority.xml`
 
 **Monthly cost:** ~$15
+
+**📖 See [SECURITY.md](SECURITY.md) for all auth options**
 
 ---
 
@@ -90,13 +98,16 @@ docker-compose run pipeline
 
 Before going live:
 
+- [ ] **Authentication enabled** (Basic Auth minimum) - See [SECURITY.md](SECURITY.md)
 - [ ] API key stored in Secrets Manager (not in code)
 - [ ] Security groups configured (minimal ports)
-- [ ] SSL/HTTPS enabled
+- [ ] SSL/HTTPS enabled (Let's Encrypt)
 - [ ] CloudWatch monitoring set up
 - [ ] Regular backups configured
 - [ ] IAM roles with least privilege
 - [ ] VPC with private subnets (production)
+
+**⚠️ Critical:** By default, the dashboard has no authentication. Anyone with the URL can access it.
 
 ---
 

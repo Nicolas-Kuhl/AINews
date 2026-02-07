@@ -58,10 +58,22 @@ nano /opt/ainews/config.yaml
 sudo systemctl restart ainews-dashboard
 ```
 
-### Step 4: Access
+### Step 4: Add Authentication (Recommended)
 
-- **Dashboard:** `http://YOUR_EC2_IP/`
-- **RSS Feed:** `http://YOUR_EC2_IP/rss/high_priority.xml`
+**⚠️ Important:** The dashboard has no authentication by default. Anyone with the URL can access it.
+
+```bash
+# Quick: Add Basic Authentication
+chmod +x deployment/add-basic-auth.sh
+./deployment/add-basic-auth.sh
+```
+
+See **[SECURITY.md](SECURITY.md)** for all authentication options.
+
+### Step 5: Access
+
+- **Dashboard:** `http://YOUR_EC2_IP/` (login required)
+- **RSS Feed:** `http://YOUR_EC2_IP/rss/high_priority.xml` (public)
 
 ### Optional: Add SSL Certificate
 
