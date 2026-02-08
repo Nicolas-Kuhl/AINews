@@ -41,6 +41,7 @@ SCHEMA_GROUP_INDEX = (
 
 class Database:
     def __init__(self, db_path: str):
+        self.db_path = db_path  # Store path for later use
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(db_path)
         self.conn.row_factory = sqlite3.Row
