@@ -1,6 +1,6 @@
 from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 
-from thefuzz import fuzz
+from rapidfuzz import fuzz
 
 from ainews.models import RawNewsItem
 

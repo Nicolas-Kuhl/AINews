@@ -75,6 +75,13 @@ def _score_batch(
             results = json.loads(json_match.group())
         else:
             results = json.loads(text)
+
+        # Validate batch length
+        if not isinstance(results, list):
+            print(f"    [Scorer] Warning: Expected JSON array, got {type(results).__name__}. Using fallback scoring.")
+            results = []
+        elif len(results) != len(items):
+            print(f"    [Scorer] Warning: Expected {len(items)} results, got {len(results)}. Using fallback for missing items.")
     except Exception as e:
         print(f"    [Scorer] Batch API error: {e}")
         return [

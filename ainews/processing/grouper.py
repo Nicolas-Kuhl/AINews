@@ -3,7 +3,7 @@
 import re
 from urllib.parse import urlparse
 
-from thefuzz import fuzz
+from rapidfuzz import fuzz
 
 from ainews.storage.database import Database
 

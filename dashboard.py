@@ -31,6 +31,31 @@ def get_last_run_stats(db_path: str):
     return result
 
 
+def filter_grouped_items(grouped_items, search_query: str):
+    """Filter grouped items by search query (title or summary)."""
+    if not search_query:
+        return grouped_items
+
+    query_lower = search_query.lower()
+    filtered = []
+
+    for primary, related in grouped_items:
+        # Check if query matches title or summary
+        if (query_lower in primary.title.lower() or
+            (primary.summary and query_lower in primary.summary.lower())):
+            filtered.append((primary, related))
+            continue
+
+        # Check related items
+        for item in related:
+            if (query_lower in item.title.lower() or
+                (item.summary and query_lower in item.summary.lower())):
+                filtered.append((primary, related))
+                break
+
+    return filtered
+
+
 def check_authentication():
     """Check if authentication is enabled and handle login."""
     auth_config_path = PROJECT_ROOT / "auth_config.yaml"
@@ -138,6 +163,9 @@ def main():
         sort_label = st.selectbox("Sort by", list(sort_options.keys()))
         sort_dir = st.radio("Direction", ["DESC", "ASC"], horizontal=True)
 
+        st.divider()
+        search_query = st.text_input("🔍 Search titles/summaries", placeholder="Type to filter...")
+
     # Tabs
     tab_releases, tab_industry, tab_settings, tab_about = st.tabs(
         ["New Releases", "Industry News", "Settings", "About"]
@@ -160,18 +188,20 @@ def main():
         sort_dir=sort_dir,
     )
 
-    # New Releases tab (using cached query)
+    # New Releases tab (using cached query + client-side search)
     with tab_releases:
         grouped = get_grouped_items(cfg["db_path"], "New Releases", **filter_kwargs)
+        grouped = filter_grouped_items(grouped, search_query)
         st.subheader(f"New Releases ({len(grouped)})")
         if not grouped:
             st.info("📡 No new release items found matching your filters.")
         else:
             _render_news_list(grouped, db, cfg)
 
-    # Industry tab (using cached query)
+    # Industry tab (using cached query + client-side search)
     with tab_industry:
         grouped = get_grouped_items(cfg["db_path"], "Industry", **filter_kwargs)
+        grouped = filter_grouped_items(grouped, search_query)
         st.subheader(f"Industry News ({len(grouped)})")
         if not grouped:
             st.info("📰 No industry items found matching your filters.")

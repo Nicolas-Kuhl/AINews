@@ -8,6 +8,7 @@ from typing import Optional
 import feedparser
 import httpx
 from dateutil import parser as dateparser
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from ainews.fetchers.html_scraper import discover_rss_link, scrape_html_page
 from ainews.models import RawNewsItem
@@ -83,14 +84,26 @@ def _fetch_rss_direct(feed_config: dict, timeout: int, max_items: int) -> list[R
 # type: auto — httpx fetch, then auto-detect RSS vs HTML
 # ---------------------------------------------------------------------------
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=1, max=10),
+    retry=retry_if_exception_type((httpx.HTTPError, httpx.TimeoutException)),
+    reraise=True
+)
+def _fetch_with_retry(url: str, timeout: int, headers: dict) -> httpx.Response:
+    """HTTP GET with retry logic."""
+    resp = httpx.get(url, timeout=timeout, follow_redirects=True, headers=headers)
+    resp.raise_for_status()
+    return resp
+
+
 def _fetch_auto(feed_config: dict, timeout: int, max_items: int) -> list[RawNewsItem]:
     """Fetch URL with httpx, auto-detect RSS/Atom vs HTML, scrape accordingly."""
     name = feed_config["name"]
     url = feed_config["url"]
 
     try:
-        resp = httpx.get(url, timeout=timeout, follow_redirects=True, headers=_HEADERS)
-        resp.raise_for_status()
+        resp = _fetch_with_retry(url, timeout, _HEADERS)
     except Exception as e:
         print(f"  [Feed] Error fetching {name}: {e}")
         return []

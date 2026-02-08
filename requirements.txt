@@ -20,8 +20,9 @@ cssselect>=1.4.0
 playwright>=1.58.0
 
 # Processing
-thefuzz[speedup]>=0.22.1
+rapidfuzz>=3.0.0
 
 # Utilities
 pyyaml>=6.0.3
 python-dateutil>=2.9.0.post0
+tenacity>=8.2.0

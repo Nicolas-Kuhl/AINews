@@ -54,8 +54,9 @@ def generate_learning_objectives(cfg: dict, item):
         url=item.url,
     )
     client = anthropic.Anthropic(api_key=api_key)
+    lo_model = cfg.get("lo_model", "claude-opus-4-6")
     response = client.messages.create(
-        model="claude-opus-4-6",
+        model=lo_model,
         max_tokens=4096,
         thinking={
             "type": "enabled",
