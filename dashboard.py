@@ -13,6 +13,24 @@ from dashboard_components import _render_news_list, _render_settings_tab, load_c
 PROJECT_ROOT = Path(__file__).resolve().parent
 
 
+@st.cache_data(ttl=60)  # Cache for 60 seconds
+def get_grouped_items(db_path: str, category: str, **filter_kwargs):
+    """Cached database query for grouped items."""
+    db = Database(db_path)
+    result = db.query_grouped(category=category, **filter_kwargs)
+    db.close()
+    return result
+
+
+@st.cache_data(ttl=60)  # Cache for 60 seconds
+def get_last_run_stats(db_path: str):
+    """Cached database query for run stats."""
+    db = Database(db_path)
+    result = db.get_last_run_stats()
+    db.close()
+    return result
+
+
 def check_authentication():
     """Check if authentication is enabled and handle login."""
     auth_config_path = PROJECT_ROOT / "auth_config.yaml"
@@ -83,8 +101,8 @@ def main():
     cfg = load_config()
     db = Database(cfg["db_path"])
 
-    # Run status bar
-    run_stats = db.get_last_run_stats()
+    # Run status bar (cached)
+    run_stats = get_last_run_stats(cfg["db_path"])
     if run_stats:
         from datetime import datetime
         try:
@@ -142,18 +160,18 @@ def main():
         sort_dir=sort_dir,
     )
 
-    # New Releases tab
+    # New Releases tab (using cached query)
     with tab_releases:
-        grouped = db.query_grouped(category="New Releases", **filter_kwargs)
+        grouped = get_grouped_items(cfg["db_path"], "New Releases", **filter_kwargs)
         st.subheader(f"New Releases ({len(grouped)})")
         if not grouped:
             st.info("📡 No new release items found matching your filters.")
         else:
             _render_news_list(grouped, db, cfg)
 
-    # Industry tab
+    # Industry tab (using cached query)
     with tab_industry:
-        grouped = db.query_grouped(category="Industry", **filter_kwargs)
+        grouped = get_grouped_items(cfg["db_path"], "Industry", **filter_kwargs)
         st.subheader(f"Industry News ({len(grouped)})")
         if not grouped:
             st.info("📰 No industry items found matching your filters.")
