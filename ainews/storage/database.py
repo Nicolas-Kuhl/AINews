@@ -38,6 +38,10 @@ SCHEMA_GROUP_INDEX = (
     "CREATE INDEX IF NOT EXISTS idx_group_id ON news_items(group_id);"
 )
 
+SCHEMA_PROCESSED_AT_INDEX = (
+    "CREATE INDEX IF NOT EXISTS idx_processed_at ON news_items(processed_at DESC);"
+)
+
 
 class Database:
     def __init__(self, db_path: str):
@@ -92,6 +96,8 @@ class Database:
             self.conn.commit()
         except sqlite3.OperationalError:
             pass
+        # Add index on processed_at for fast "last 24 hours" queries
+        self.conn.execute(SCHEMA_PROCESSED_AT_INDEX)
         self.conn.commit()
 
     def url_exists(self, url: str) -> bool:
