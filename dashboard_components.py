@@ -271,6 +271,8 @@ def _render_news_item(primary, related, db, cfg):
                     import time
                     # Set timestamp to trigger animation
                     st.session_state[ack_pending_key] = time.time()
+                    # Clear cache so acknowledged items update immediately
+                    st.cache_data.clear()
                     st.rerun()
             else:
                 st.markdown("✅")
@@ -367,6 +369,8 @@ def _render_learning_objectives(primary, cfg, db):
                 db.update_learning_objectives(primary.id, new_lo, generated_with_opus=True)
                 primary.learning_objectives = new_lo
                 primary.lo_generated_with_opus = True
+                # Clear cache so updated data shows immediately
+                st.cache_data.clear()
             except Exception as e:
                 st.session_state[lo_err_key] = f"Generation failed: {e}"
         st.session_state[lo_gen_key] = False
