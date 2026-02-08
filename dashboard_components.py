@@ -44,7 +44,7 @@ def load_css(css_file_path: Path):
 
 
 def generate_learning_objectives(cfg: dict, item):
-    """Call Claude Opus to generate learning objectives for a news item."""
+    """Call Claude Opus with extended thinking to generate learning objectives."""
     api_key = cfg.get("anthropic_api_key", "")
     prompt_template = cfg.get("lo_prompt") or DEFAULT_LO_PROMPT
     prompt = prompt_template.format(
@@ -56,10 +56,19 @@ def generate_learning_objectives(cfg: dict, item):
     client = anthropic.Anthropic(api_key=api_key)
     response = client.messages.create(
         model="claude-opus-4-6",
-        max_tokens=1024,
+        max_tokens=4096,
+        thinking={
+            "type": "enabled",
+            "budget_tokens": 3000
+        },
         messages=[{"role": "user", "content": prompt}],
     )
-    return response.content[0].text.strip()
+    # Extract text content (skip thinking blocks)
+    text_content = ""
+    for block in response.content:
+        if block.type == "text":
+            text_content += block.text
+    return text_content.strip()
 
 
 def _render_news_list(grouped_items, db, cfg):

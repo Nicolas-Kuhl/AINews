@@ -293,18 +293,36 @@ class Database:
         ]
 
     def get_last_run_stats(self) -> Optional[dict]:
-        row = self.conn.execute(
-            "SELECT MAX(processed_at) as last_run FROM news_items"
-        ).fetchone()
-        if not row or not row["last_run"]:
-            return None
-        last_run = row["last_run"]
-        # Count items from that same date
-        last_date = last_run[:10]  # YYYY-MM-DD prefix
+        """Get last pipeline run time and items added in last 24 hours."""
+        from datetime import datetime, timedelta
+        from pathlib import Path
+
+        # Read last run timestamp from file
+        timestamp_file = Path(self.db_path).parent / ".last_run"
+        last_run = None
+        if timestamp_file.exists():
+            try:
+                with open(timestamp_file) as f:
+                    last_run = f.read().strip()
+            except Exception:
+                pass
+
+        # If no timestamp file, fall back to database (backward compatibility)
+        if not last_run:
+            row = self.conn.execute(
+                "SELECT MAX(processed_at) as last_run FROM news_items"
+            ).fetchone()
+            if not row or not row["last_run"]:
+                return None
+            last_run = row["last_run"]
+
+        # Count items added in the last 24 hours
+        cutoff_time = (datetime.now() - timedelta(hours=24)).isoformat()
         count = self.conn.execute(
-            "SELECT COUNT(*) as cnt FROM news_items WHERE processed_at LIKE ?",
-            (f"{last_date}%",),
+            "SELECT COUNT(*) as cnt FROM news_items WHERE processed_at >= ?",
+            (cutoff_time,),
         ).fetchone()["cnt"]
+
         return {"last_run": last_run, "items_added": count}
 
     def get_score_distribution(self) -> dict[int, int]:

@@ -86,9 +86,38 @@ def main():
     # Run status bar
     run_stats = db.get_last_run_stats()
     if run_stats:
-        st.markdown(
-            f"**Last run:** {run_stats['last_run']} · **Items added:** {run_stats['items_added']}"
-        )
+        # Convert ISO timestamp to local time using JavaScript
+        from datetime import datetime
+        try:
+            # Parse ISO timestamp
+            timestamp_iso = run_stats['last_run']
+            # Create a unique ID for this timestamp element
+            ts_id = "last-run-timestamp"
+
+            # Display with JavaScript to convert to local time
+            st.markdown(f"""
+            <div>
+                <strong>Last run:</strong> <span id="{ts_id}">Loading...</span> ·
+                <strong>Items added in last 24 hours:</strong> {run_stats['items_added']}
+            </div>
+            <script>
+                (function() {{
+                    try {{
+                        var isoTime = '{timestamp_iso}';
+                        var date = new Date(isoTime);
+                        var formatted = date.toLocaleString();
+                        document.getElementById('{ts_id}').textContent = formatted;
+                    }} catch(e) {{
+                        document.getElementById('{ts_id}').textContent = '{timestamp_iso}';
+                    }}
+                }})();
+            </script>
+            """, unsafe_allow_html=True)
+        except Exception:
+            # Fallback to simple display
+            st.markdown(
+                f"**Last run:** {run_stats['last_run']} · **Items added in last 24 hours:** {run_stats['items_added']}"
+            )
     else:
         st.info("No data yet — run the fetch pipeline to get started.")
 

@@ -2,6 +2,8 @@
 """AI News Aggregator — fetch, process, and store pipeline."""
 
 import sys
+import logging
+from logging.handlers import TimedRotatingFileHandler
 from datetime import datetime
 from pathlib import Path
 
@@ -17,72 +19,112 @@ from ainews.rss_generator import save_rss_feed
 from ainews.storage.database import Database
 
 
-def main():
-    start_time = datetime.now()
-    print("\n" + "=" * 60)
-    print("AI News Aggregator — Fetch Pipeline")
-    print(f"Started: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
-    print("=" * 60)
+def setup_logging(log_path: Path):
+    """Set up rotating file handler for pipeline logs."""
+    log_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # 1. Load config
-    print("\n[1/8] Loading configuration...")
+    # Create rotating handler: rotates at midnight, keeps 7 days
+    handler = TimedRotatingFileHandler(
+        filename=log_path,
+        when='midnight',
+        interval=1,
+        backupCount=7,
+        encoding='utf-8'
+    )
+    handler.suffix = '%Y-%m-%d'
+
+    # Configure logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(message)s',
+        handlers=[handler, logging.StreamHandler(sys.stdout)]
+    )
+
+    return logging.getLogger(__name__)
+
+
+def write_last_run_timestamp(timestamp_path: Path):
+    """Write timestamp of pipeline completion for dashboard display."""
+    timestamp_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(timestamp_path, 'w') as f:
+        f.write(datetime.now().isoformat())
+
+
+def main():
+    # Load config first to get data directory path
     cfg = load_config()
+    data_dir = Path(cfg.get("db_path", "data/ainews.db")).parent
+
+    # Set up logging with rotation
+    logger = setup_logging(data_dir / "pipeline.log")
+
+    start_time = datetime.now()
+    logger.info("\n" + "=" * 60)
+    logger.info("AI News Aggregator — Fetch Pipeline")
+    logger.info(f"Started: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info("=" * 60)
+
+    # 1. Load config (already loaded above)
+    logger.info("\n[1/8] Loading configuration...")
     api_key = cfg.get("anthropic_api_key", "")
     if not api_key:
-        print("ERROR: No Anthropic API key found.")
-        print("Set ANTHROPIC_API_KEY env var or add to config.yaml")
+        logger.error("ERROR: No Anthropic API key found.")
+        logger.error("Set ANTHROPIC_API_KEY env var or add to config.yaml")
         sys.exit(1)
 
     # 2. Initialize DB
-    print("[2/8] Initializing database...")
+    logger.info("[2/8] Initializing database...")
     db = Database(cfg["db_path"])
 
     # 3. Fetch RSS feeds
-    print(f"\n[3/8] Fetching RSS feeds ({len(cfg['feeds'])} feeds)...")
+    logger.info(f"\n[3/8] Fetching RSS feeds ({len(cfg['feeds'])} feeds)...")
     rss_items = fetch_all_feeds(
         cfg["feeds"],
         timeout=cfg["feed_timeout"],
         max_items=cfg["max_items_per_feed"],
     )
-    print(f"  Total RSS items: {len(rss_items)}")
+    logger.info(f"  Total RSS items: {len(rss_items)}")
 
     # 4. Search DuckDuckGo
-    print(f"\n[4/8] Searching DuckDuckGo ({len(cfg['search_queries'])} queries)...")
+    logger.info(f"\n[4/8] Searching DuckDuckGo ({len(cfg['search_queries'])} queries)...")
     search_items = search_all_queries(
         cfg["search_queries"],
         max_results=cfg["max_search_results"],
     )
-    print(f"  Total search items: {len(search_items)}")
+    logger.info(f"  Total search items: {len(search_items)}")
 
     # 5. Combine and deduplicate
     combined = rss_items + search_items
-    print(f"\n[5/8] Deduplicating {len(combined)} items...")
+    logger.info(f"\n[5/8] Deduplicating {len(combined)} items...")
     unique = deduplicate(combined, threshold=cfg["dedup_threshold"])
 
     # Filter out items already in the database
     new_items = [item for item in unique if not db.url_exists(item.url)]
-    print(f"  After dedup: {len(unique)} unique items")
-    print(f"  New (not in DB): {len(new_items)} items")
+    logger.info(f"  After dedup: {len(unique)} unique items")
+    logger.info(f"  New (not in DB): {len(new_items)} items")
 
     if not new_items:
-        print("\nNo new items to process. Generating RSS feed...")
+        logger.info("\nNo new items to process. Generating RSS feed...")
         # Still generate RSS feed even if no new items
-        _generate_rss_feed(db, cfg)
+        _generate_rss_feed(db, cfg, logger)
         db.close()
 
         # Summary for no-new-items case
         end_time = datetime.now()
         duration = (end_time - start_time).total_seconds()
-        print("\n" + "=" * 60)
-        print("Pipeline Complete (no new items)")
-        print(f"  Started:     {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"  Finished:    {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"  Duration:    {duration:.1f}s")
-        print("=" * 60)
+        logger.info("\n" + "=" * 60)
+        logger.info("Pipeline Complete (no new items)")
+        logger.info(f"  Started:     {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"  Finished:    {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"  Duration:    {duration:.1f}s")
+        logger.info("=" * 60)
+
+        # Write timestamp for dashboard
+        write_last_run_timestamp(data_dir / ".last_run")
         return
 
     # 6. Score with Claude
-    print(f"\n[6/8] Scoring {len(new_items)} items with Claude ({cfg['model']})...")
+    logger.info(f"\n[6/8] Scoring {len(new_items)} items with Claude ({cfg['model']})...")
     client = anthropic.Anthropic(api_key=api_key)
     processed = score_items(
         client, cfg["model"], new_items,
@@ -98,13 +140,13 @@ def main():
             stored += 1
 
     # 7. Run smart grouper
-    print("\n[7/8] Running smart grouper...")
+    logger.info("\n[7/8] Running smart grouper...")
     group_count = run_grouper(db)
-    print(f"  Created {group_count} groups")
+    logger.info(f"  Created {group_count} groups")
 
     # 8. Generate RSS feed
-    print("\n[8/8] Generating RSS feed...")
-    rss_count = _generate_rss_feed(db, cfg)
+    logger.info("\n[8/8] Generating RSS feed...")
+    rss_count = _generate_rss_feed(db, cfg, logger)
 
     db.close()
 
@@ -112,23 +154,26 @@ def main():
     end_time = datetime.now()
     duration = (end_time - start_time).total_seconds()
 
-    print("\n" + "=" * 60)
-    print("Pipeline Complete!")
-    print(f"  Started:     {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"  Finished:    {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"  Duration:    {duration:.1f}s")
-    print(f"  Fetched:     {len(combined)} total items")
-    print(f"  Unique:      {len(unique)} after dedup")
-    print(f"  New:         {len(new_items)} not in DB")
-    print(f"  Stored:      {stored} items")
-    print(f"  Groups:      {group_count}")
-    print(f"  RSS feed:    {rss_count} items (score 8+)")
-    print("=" * 60)
-    print("\nRun 'streamlit run dashboard.py' to view results.")
-    print("RSS feed: data/high_priority.xml")
+    logger.info("\n" + "=" * 60)
+    logger.info("Pipeline Complete!")
+    logger.info(f"  Started:     {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info(f"  Finished:    {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info(f"  Duration:    {duration:.1f}s")
+    logger.info(f"  Fetched:     {len(combined)} total items")
+    logger.info(f"  Unique:      {len(unique)} after dedup")
+    logger.info(f"  New:         {len(new_items)} not in DB")
+    logger.info(f"  Stored:      {stored} items")
+    logger.info(f"  Groups:      {group_count}")
+    logger.info(f"  RSS feed:    {rss_count} items (score 8+)")
+    logger.info("=" * 60)
+    logger.info("\nRun 'streamlit run dashboard.py' to view results.")
+    logger.info("RSS feed: data/high_priority.xml")
+
+    # Write timestamp for dashboard
+    write_last_run_timestamp(data_dir / ".last_run")
 
 
-def _generate_rss_feed(db, cfg):
+def _generate_rss_feed(db, cfg, logger):
     """Generate RSS feed for high-priority items."""
     # Get output path from config or use default
     output_path = cfg.get("rss_output_path", "data/high_priority.xml")
@@ -140,7 +185,7 @@ def _generate_rss_feed(db, cfg):
 
     # Generate RSS feed
     rss_count = save_rss_feed(db, str(output_file), min_score=min_score)
-    print(f"  RSS feed generated: {output_path} ({rss_count} items)")
+    logger.info(f"  RSS feed generated: {output_path} ({rss_count} items)")
 
     return rss_count
 
