@@ -43,58 +43,6 @@ def load_css(css_file_path: Path):
             st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
 
-def format_datetime_local(dt, element_id: str, format_type: str = "short") -> str:
-    """
-    Generate HTML+JS to display datetime in user's local timezone.
-
-    Args:
-        dt: datetime object (can be timezone-aware or naive)
-        element_id: Unique ID for the span element
-        format_type: "short" for "Mon DD HH:MM" or "long" for "YYYY-MM-DD HH:MM"
-
-    Returns:
-        HTML string with JavaScript to convert to local time
-    """
-    if not dt:
-        return "—"
-
-    iso_time = dt.isoformat()
-
-    if format_type == "short":
-        js_code = f"""
-            var options = {{ month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }};
-            document.getElementById('{element_id}').textContent = date.toLocaleString('en-US', options);
-        """
-    else:  # long
-        js_code = f"""
-            var options = {{ year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }};
-            var formatted = date.toLocaleString('en-US', options);
-            // Convert to YYYY-MM-DD HH:MM format
-            var parts = formatted.split(', ');
-            var dateParts = parts[0].split('/');
-            var year = dateParts[2];
-            var month = dateParts[0].padStart(2, '0');
-            var day = dateParts[1].padStart(2, '0');
-            var time = parts[1];
-            document.getElementById('{element_id}').textContent = year + '-' + month + '-' + day + ' ' + time;
-        """
-
-    return f"""
-        <span id="{element_id}">Loading...</span>
-        <script>
-            (function() {{
-                try {{
-                    var isoTime = '{iso_time}';
-                    var date = new Date(isoTime);
-                    {js_code}
-                }} catch(e) {{
-                    document.getElementById('{element_id}').textContent = '{dt.strftime("%b %d")}';
-                }}
-            }})();
-        </script>
-    """
-
-
 def generate_learning_objectives(cfg: dict, item):
     """Call Claude Opus with extended thinking to generate learning objectives."""
     api_key = cfg.get("anthropic_api_key", "")
@@ -207,12 +155,13 @@ def _render_news_item(primary, related, db, cfg):
         # Source
         cols[3].caption(primary.source)
 
-        # Date (with time in local timezone)
-        date_html = format_datetime_local(primary.published, f"date-{primary.id}", "short")
-        cols[4].markdown(
-            f'<div style="font-size:0.875rem;color:#888;">{date_html}</div>',
-            unsafe_allow_html=True
-        )
+        # Date (with time)
+        if primary.published:
+            # Format as "Mon DD HH:MM" in UTC
+            date_str = primary.published.strftime("%b %d %H:%M")
+        else:
+            date_str = "—"
+        cols[4].caption(date_str)
 
         # Acknowledge button (always visible)
         with cols[5]:
@@ -261,18 +210,17 @@ def _render_item_details(primary, related, db, cfg):
     col1.caption(f"**Category:** {primary.category}")
     col2.caption(f"**Fetched via:** {primary.fetched_via}")
     if primary.published:
-        date_html = format_datetime_local(primary.published, f"pub-{primary.id}", "long")
-        col3.markdown(
-            f'<div style="font-size:0.875rem;color:#888;"><strong>Published:</strong> {date_html}</div>',
-            unsafe_allow_html=True
-        )
+        # Format as "YYYY-MM-DD HH:MM" in UTC
+        date_str = primary.published.strftime('%Y-%m-%d %H:%M')
+        col3.caption(f"**Published:** {date_str} UTC")
 
     # Related sources
     if related:
         st.markdown("---")
         st.markdown(f"### All Sources ({len([primary] + related)} total)")
         for idx, item in enumerate([primary] + related, 1):
-            date_html = format_datetime_local(item.published, f"rel-{item.id}", "short")
+            # Format date as "Mon DD HH:MM" in UTC
+            date_str = item.published.strftime("%b %d %H:%M") if item.published else "—"
 
             # Score pill color
             if item.score >= 8:
@@ -283,7 +231,7 @@ def _render_item_details(primary, related, db, cfg):
                 score_badge = f'<span style="background-color:#6b7280;color:#fff;padding:0.1rem 0.4rem;border-radius:6px;font-size:0.7rem;font-weight:700;">{item.score}</span>'
 
             st.markdown(
-                f"{idx}. [{item.title}]({item.url}) · **{item.source}** · {date_html} · {score_badge}",
+                f"{idx}. [{item.title}]({item.url}) · **{item.source}** · {date_str} · {score_badge}",
                 unsafe_allow_html=True
             )
 

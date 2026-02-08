@@ -86,38 +86,19 @@ def main():
     # Run status bar
     run_stats = db.get_last_run_stats()
     if run_stats:
-        # Convert ISO timestamp to local time using JavaScript
         from datetime import datetime
         try:
-            # Parse ISO timestamp
+            # Parse ISO timestamp and format it nicely
             timestamp_iso = run_stats['last_run']
-            # Create a unique ID for this timestamp element
-            ts_id = "last-run-timestamp"
-
-            # Display with JavaScript to convert to local time
-            st.markdown(f"""
-            <div>
-                <strong>Last run:</strong> <span id="{ts_id}">Loading...</span> ·
-                <strong>Items added in last 24 hours:</strong> {run_stats['items_added']}
-            </div>
-            <script>
-                (function() {{
-                    try {{
-                        var isoTime = '{timestamp_iso}';
-                        var date = new Date(isoTime);
-                        var formatted = date.toLocaleString();
-                        document.getElementById('{ts_id}').textContent = formatted;
-                    }} catch(e) {{
-                        document.getElementById('{ts_id}').textContent = '{timestamp_iso}';
-                    }}
-                }})();
-            </script>
-            """, unsafe_allow_html=True)
+            dt = datetime.fromisoformat(timestamp_iso)
+            # Format as "YYYY-MM-DD HH:MM:SS UTC"
+            formatted_time = dt.strftime('%Y-%m-%d %H:%M:%S UTC')
         except Exception:
-            # Fallback to simple display
-            st.markdown(
-                f"**Last run:** {run_stats['last_run']} · **Items added in last 24 hours:** {run_stats['items_added']}"
-            )
+            formatted_time = run_stats['last_run']
+
+        st.markdown(
+            f"**Last run:** {formatted_time} · **Items added in last 24 hours:** {run_stats['items_added']}"
+        )
     else:
         st.info("No data yet — run the fetch pipeline to get started.")
 
