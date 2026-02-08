@@ -4,18 +4,229 @@ lo_model: claude-opus-4-6
 lo_web_research: true
 lo_search_count: 3
 feeds:
+# OpenAI
 - name: OpenAI News
   url: https://openai.com/news/
   type: web
   enabled: true
+- name: OpenAI News RSS
+  url: https://openai.com/news/rss.xml
+  type: rss
+  enabled: false
+- name: OpenAI Blog RSS
+  url: https://openai.com/blog/rss/
+  type: rss
+  enabled: false
+- name: OpenAI Blog
+  url: https://openai.com/blog/
+  type: web
+  enabled: false
+
+# Anthropic
 - name: Anthropic News
   url: https://www.anthropic.com/news
   type: web
   enabled: true
+- name: Anthropic Newsroom
+  url: https://www.anthropic.com/newsroom
+  type: web
+  enabled: false
+- name: Claude Status RSS
+  url: https://status.claude.com/history.rss
+  type: rss
+  enabled: false
+- name: Claude Status Atom
+  url: https://status.claude.com/history.atom
+  type: rss
+  enabled: false
+- name: Claude Status
+  url: https://status.claude.com/
+  type: web
+  enabled: false
+
+# Google
 - name: Gemini News
   url: https://blog.google/products-and-platforms/products/gemini/
   type: web
   enabled: true
+- name: Google Keyword RSS
+  url: https://blog.google/rss/
+  type: rss
+  enabled: false
+- name: Google Research Atom
+  url: https://blog.research.google/atom.xml
+  type: rss
+  enabled: false
+- name: Google AI Blog Atom
+  url: http://googleaiblog.blogspot.com/atom.xml
+  type: rss
+  enabled: false
+- name: Google Cloud RSS
+  url: https://cloudblog.withgoogle.com/rss
+  type: rss
+  enabled: false
+- name: Google AI Keyword
+  url: https://blog.google/innovation-and-ai/technology/ai/
+  type: web
+  enabled: false
+- name: Google Research Blog
+  url: https://blog.research.google/
+  type: web
+  enabled: false
+- name: Google AI Blog
+  url: https://ai.googleblog.com/
+  type: web
+  enabled: false
+- name: DeepMind Blog
+  url: https://deepmind.google/blog/
+  type: web
+  enabled: false
+
+# Microsoft
+- name: Microsoft Blog RSS
+  url: https://blogs.microsoft.com/?feed=rss2
+  type: rss
+  enabled: false
+- name: Microsoft Research RSS
+  url: https://www.microsoft.com/en-us/research/feed/
+  type: rss
+  enabled: false
+- name: Azure Blog RSS
+  url: https://azure.microsoft.com/en-us/blog/feed/
+  type: rss
+  enabled: false
+- name: Azure Updates RSS
+  url: https://azurecomcdn.azureedge.net/en-us/updates/feed
+  type: rss
+  enabled: false
+- name: Microsoft Blog
+  url: https://blogs.microsoft.com/
+  type: web
+  enabled: false
+- name: Microsoft Research
+  url: https://www.microsoft.com/en-us/research/
+  type: web
+  enabled: false
+- name: Azure Blog
+  url: https://azure.microsoft.com/en-us/blog/
+  type: web
+  enabled: false
+- name: Azure Updates
+  url: https://azure.microsoft.com/en-us/updates/
+  type: web
+  enabled: false
+- name: Microsoft AI Blog
+  url: https://www.microsoft.com/en-us/ai/blog/
+  type: web
+  enabled: false
+
+# GitHub
+- name: GitHub Changelog RSS
+  url: https://github.blog/changelog/feed/
+  type: rss
+  enabled: false
+- name: GitHub Copilot RSS
+  url: https://github.blog/changelog/label/copilot/feed/
+  type: rss
+  enabled: false
+- name: GitHub Changelog
+  url: https://github.blog/changelog/
+  type: web
+  enabled: false
+- name: GitHub Copilot Changes
+  url: https://github.blog/changelog/label/copilot/
+  type: web
+  enabled: false
+
+# AWS
+- name: AWS ML Blog RSS
+  url: https://aws.amazon.com/blogs/machine-learning/feed/
+  type: rss
+  enabled: false
+- name: AWS ML Blog
+  url: https://aws.amazon.com/blogs/machine-learning/
+  type: web
+  enabled: false
+
+# Meta
+- name: Meta AI Blog
+  url: https://ai.meta.com/blog/
+  type: web
+  enabled: false
+
+# NVIDIA
+- name: NVIDIA Developer RSS
+  url: https://developer.nvidia.com/blog/feed
+  type: rss
+  enabled: false
+- name: NVIDIA News RSS
+  url: https://nvidianews.nvidia.com/rss
+  type: rss
+  enabled: false
+- name: NVIDIA Developer Blog
+  url: https://developer.nvidia.com/blog/
+  type: web
+  enabled: false
+- name: NVIDIA Newsroom
+  url: https://nvidianews.nvidia.com/
+  type: web
+  enabled: false
+
+# Hugging Face
+- name: Hugging Face RSS
+  url: https://huggingface.co/blog/feed.xml
+  type: rss
+  enabled: false
+- name: Hugging Face Blog
+  url: https://huggingface.co/blog
+  type: web
+  enabled: false
+
+# Cohere
+- name: Cohere Context RSS
+  url: https://txt.cohere.ai/rss/
+  type: rss
+  enabled: false
+- name: Cohere Blog
+  url: https://cohere.com/blog
+  type: web
+  enabled: false
+- name: Cohere Context
+  url: https://txt.cohere.ai/
+  type: web
+  enabled: false
+
+# Mistral AI
+- name: Mistral AI News
+  url: https://mistral.ai/news
+  type: web
+  enabled: false
+
+# Stability AI
+- name: Stability AI RSS
+  url: https://stability.ai/blog?format=rss
+  type: rss
+  enabled: false
+- name: Stability AI Blog
+  url: https://stability.ai/blog
+  type: web
+  enabled: false
+
+# Databricks
+- name: Databricks RSS
+  url: https://www.databricks.com/feed
+  type: rss
+  enabled: false
+- name: Databricks
+  url: https://www.databricks.com/
+  type: web
+  enabled: false
+
+# IBM
+- name: IBM watsonx Blog
+  url: https://developer.ibm.com/components/watsonx/blogs/
+  type: web
+  enabled: false
 search_queries: []
 dedup_threshold: 80
 max_search_results: 5
