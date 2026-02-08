@@ -4,9 +4,9 @@ A curated AI news dashboard that aggregates, scores, and groups news from multip
 
 ## Features
 
-- **Multi-source fetching** — RSS feeds, auto-detected feeds, and JavaScript-rendered websites via headless Chromium (Playwright)
+- **Multi-source fetching** — 49+ feeds from major AI/LLM vendors (OpenAI, Anthropic, Google, Microsoft, GitHub, AWS, Meta, NVIDIA, Hugging Face, Cohere, Mistral, Stability AI, Databricks, IBM) via RSS feeds and JavaScript-rendered websites using headless Chromium (Playwright)
 - **AI scoring** — Claude Sonnet scores each item 1-10 for relevance, assigns categories (New Releases / Industry), writes summaries and learning objectives
-- **Learning objectives with Opus** — generate deep, research-backed learning objectives on demand using Claude Opus
+- **Web-research enhanced learning objectives** — Claude Opus performs DuckDuckGo web searches to gather additional context and generate comprehensive, research-backed learning objectives on demand
 - **Smart grouping** — clusters articles covering the same story using fuzzy title matching
 - **Dark dashboard** — Streamlit app with a Pluralsight-inspired theme, expandable rows, filters, and acknowledge workflow
 - **Source management** — enable/disable individual feeds, add/remove sources, all from the Settings tab
@@ -194,7 +194,10 @@ All settings are in `config.yaml` and can also be edited from the dashboard Sett
 |-----|-------------|---------|
 | `anthropic_api_key` | Your Anthropic API key | — |
 | `model` | Model used for scoring | `claude-sonnet-4-5-20250929` |
-| `feeds` | List of news sources (name, url, type, enabled) | 3 defaults |
+| `lo_model` | Model used for learning objectives | `claude-opus-4-6` |
+| `lo_web_research` | Enable web research for learning objectives | `true` |
+| `lo_search_count` | Number of web searches per learning objective | `3` |
+| `feeds` | List of news sources (name, url, type, enabled) | 49 sources (6 enabled by default) |
 | `search_queries` | DuckDuckGo search terms | `[]` |
 | `dedup_threshold` | Fuzzy match threshold for dedup (0-100) | `80` |
 | `max_items_per_feed` | Max items fetched per source | `20` |
