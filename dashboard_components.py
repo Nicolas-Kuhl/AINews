@@ -6,6 +6,7 @@ from pathlib import Path
 
 import anthropic
 import streamlit as st
+from ddgs import DDGS
 
 DEFAULT_LO_PROMPT = """\
 You are an expert AI curriculum designer creating learning objectives for \
@@ -43,18 +44,86 @@ def load_css(css_file_path: Path):
             st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
 
+def _search_web_for_context(query: str, max_results: int = 3) -> str:
+    """Search the web and return formatted context for Claude."""
+    try:
+        with DDGS() as ddgs:
+            results = list(ddgs.text(query, max_results=max_results))
+
+        if not results:
+            return "No search results found."
+
+        context_parts = []
+        for i, result in enumerate(results, 1):
+            title = result.get('title', 'No title')
+            body = result.get('body', 'No description')
+            url = result.get('href', '')
+            context_parts.append(f"{i}. **{title}**\n   {body}\n   Source: {url}")
+
+        return "\n\n".join(context_parts)
+    except Exception as e:
+        return f"Search error: {e}"
+
+
+def _web_search_tool(query: str) -> str:
+    """Web search tool for Claude to use via tool calling."""
+    return _search_web_for_context(query, max_results=3)
+
+
 def generate_learning_objectives(cfg: dict, item):
-    """Call Claude Opus with extended thinking to generate learning objectives."""
+    """Call Claude Opus with extended thinking and web research to generate learning objectives."""
     api_key = cfg.get("anthropic_api_key", "")
     prompt_template = cfg.get("lo_prompt") or DEFAULT_LO_PROMPT
-    prompt = prompt_template.format(
+
+    # Build base prompt
+    base_prompt = prompt_template.format(
         title=item.title,
         source=item.source,
         summary=item.summary or "(no summary available)",
         url=item.url,
     )
+
+    # Option 3: Pre-fetch web search results if enabled
+    web_research_enabled = cfg.get("lo_web_research", False)
+    search_context = ""
+
+    if web_research_enabled:
+        search_count = cfg.get("lo_search_count", 3)
+        search_query = f"{item.title} AI news"
+
+        try:
+            search_results = _search_web_for_context(search_query, max_results=search_count)
+            search_context = f"\n\n---\n**Additional Web Research:**\n{search_results}\n---\n"
+        except Exception as e:
+            search_context = f"\n\n(Web research unavailable: {e})\n"
+
+    # Combine prompt with search context
+    full_prompt = base_prompt + search_context
+
+    # Option 2: Define web search tool for Claude to use
+    tools = [
+        {
+            "name": "web_search",
+            "description": "Search the web for current information about a topic. Use this to find additional context, technical details, or recent developments that aren't in your training data.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The search query to run"
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    ]
+
     client = anthropic.Anthropic(api_key=api_key)
     lo_model = cfg.get("lo_model", "claude-opus-4-6")
+
+    # Initial request with tools
+    messages = [{"role": "user", "content": full_prompt}]
+
     response = client.messages.create(
         model=lo_model,
         max_tokens=4096,
@@ -62,13 +131,44 @@ def generate_learning_objectives(cfg: dict, item):
             "type": "enabled",
             "budget_tokens": 3000
         },
-        messages=[{"role": "user", "content": prompt}],
+        tools=tools if web_research_enabled else None,
+        messages=messages,
     )
+
+    # Handle tool use (if Claude wants to search)
+    while response.stop_reason == "tool_use":
+        tool_uses = [block for block in response.content if block.type == "tool_use"]
+
+        # Execute tools
+        tool_results = []
+        for tool_use in tool_uses:
+            if tool_use.name == "web_search":
+                query = tool_use.input["query"]
+                result = _web_search_tool(query)
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": tool_use.id,
+                    "content": result
+                })
+
+        # Add assistant response and tool results to messages
+        messages.append({"role": "assistant", "content": response.content})
+        messages.append({"role": "user", "content": tool_results})
+
+        # Continue conversation
+        response = client.messages.create(
+            model=lo_model,
+            max_tokens=4096,
+            tools=tools if web_research_enabled else None,
+            messages=messages,
+        )
+
     # Extract text content (skip thinking blocks)
     text_content = ""
     for block in response.content:
         if block.type == "text":
             text_content += block.text
+
     return text_content.strip()
 
 

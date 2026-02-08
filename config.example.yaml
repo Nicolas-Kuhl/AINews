@@ -1,6 +1,8 @@
 anthropic_api_key: YOUR_API_KEY_HERE
 model: claude-sonnet-4-5-20250929
 lo_model: claude-opus-4-6
+lo_web_research: true
+lo_search_count: 3
 feeds:
 - name: OpenAI News
   url: https://openai.com/news/
