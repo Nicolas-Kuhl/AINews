@@ -61,13 +61,13 @@ def format_datetime_local(dt, element_id: str, format_type: str = "short") -> st
     iso_time = dt.isoformat()
 
     if format_type == "short":
-        js_format = """
-            var options = { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false };
-            document.getElementById('{id}').textContent = date.toLocaleString('en-US', options);
+        js_code = f"""
+            var options = {{ month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }};
+            document.getElementById('{element_id}').textContent = date.toLocaleString('en-US', options);
         """
     else:  # long
-        js_format = """
-            var options = { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false };
+        js_code = f"""
+            var options = {{ year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }};
             var formatted = date.toLocaleString('en-US', options);
             // Convert to YYYY-MM-DD HH:MM format
             var parts = formatted.split(', ');
@@ -76,7 +76,7 @@ def format_datetime_local(dt, element_id: str, format_type: str = "short") -> st
             var month = dateParts[0].padStart(2, '0');
             var day = dateParts[1].padStart(2, '0');
             var time = parts[1];
-            document.getElementById('{id}').textContent = year + '-' + month + '-' + day + ' ' + time;
+            document.getElementById('{element_id}').textContent = year + '-' + month + '-' + day + ' ' + time;
         """
 
     return f"""
@@ -86,7 +86,7 @@ def format_datetime_local(dt, element_id: str, format_type: str = "short") -> st
                 try {{
                     var isoTime = '{iso_time}';
                     var date = new Date(isoTime);
-                    {js_format.format(id=element_id)}
+                    {js_code}
                 }} catch(e) {{
                     document.getElementById('{element_id}').textContent = '{dt.strftime("%b %d")}';
                 }}
