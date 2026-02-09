@@ -143,6 +143,15 @@ class Database:
         self.conn.commit()
         return cursor.rowcount
 
+    def acknowledge_below_score(self, max_score: int) -> int:
+        """Acknowledge all unacknowledged items with score below the given value."""
+        cursor = self.conn.execute(
+            "UPDATE news_items SET acknowledged = 1 WHERE acknowledged = 0 AND score < ?",
+            (max_score,),
+        )
+        self.conn.commit()
+        return cursor.rowcount
+
     def update_learning_objectives(self, item_id: int, objectives: str, generated_with_opus: bool = False):
         self.conn.execute(
             "UPDATE news_items SET learning_objectives = ?, lo_generated_with_opus = ? WHERE id = ?",

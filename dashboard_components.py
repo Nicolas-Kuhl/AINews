@@ -551,17 +551,29 @@ def _render_settings_tab(cfg, db, project_root):
 
     # Bulk Acknowledge
     st.subheader("Bulk Acknowledge")
-    st.caption("Acknowledge all news items processed before a specific date.")
-    ack_date = st.date_input("Acknowledge items older than", key="bulk_ack_date")
-    if st.button("Acknowledge All Before Date", key="bulk_ack_btn", type="primary"):
-        from datetime import datetime, time
-        cutoff = datetime.combine(ack_date, time.min)
-        count = db.acknowledge_before_date(cutoff)
-        st.cache_data.clear()
-        if count > 0:
-            st.success(f"Acknowledged {count} item{'s' if count != 1 else ''}.")
-        else:
-            st.info("No unacknowledged items found before that date.")
+    col_date, col_score = st.columns(2)
+    with col_date:
+        st.caption("Acknowledge all items published before a specific date.")
+        ack_date = st.date_input("Acknowledge items older than", key="bulk_ack_date")
+        if st.button("Acknowledge All Before Date", key="bulk_ack_btn", type="primary"):
+            from datetime import datetime, time
+            cutoff = datetime.combine(ack_date, time.min)
+            count = db.acknowledge_before_date(cutoff)
+            st.cache_data.clear()
+            if count > 0:
+                st.success(f"Acknowledged {count} item{'s' if count != 1 else ''}.")
+            else:
+                st.info("No unacknowledged items found before that date.")
+    with col_score:
+        st.caption("Acknowledge all items scored below a threshold.")
+        ack_score = st.number_input("Acknowledge items with score below", min_value=1, max_value=10, value=5, key="bulk_ack_score")
+        if st.button("Acknowledge All Below Score", key="bulk_ack_score_btn", type="primary"):
+            count = db.acknowledge_below_score(ack_score)
+            st.cache_data.clear()
+            if count > 0:
+                st.success(f"Acknowledged {count} item{'s' if count != 1 else ''} with score below {ack_score}.")
+            else:
+                st.info(f"No unacknowledged items found with score below {ack_score}.")
 
     st.divider()
 
