@@ -12,7 +12,7 @@ import anthropic
 from ainews.config import load_config
 from ainews.fetchers.rss_fetcher import fetch_all_feeds
 from ainews.fetchers.web_searcher import search_all_queries
-from ainews.processing.deduplicator import deduplicate
+from ainews.processing.deduplicator import deduplicate, semantic_dedup
 from ainews.processing.grouper import run_grouper
 from ainews.processing.scorer import score_items
 from ainews.rss_generator import save_rss_feed
@@ -93,15 +93,30 @@ def main():
     )
     logger.info(f"  Total search items: {len(search_items)}")
 
-    # 5. Combine and deduplicate
+    # 5. Combine and deduplicate (against batch + existing DB items)
     combined = rss_items + search_items
     logger.info(f"\n[5/8] Deduplicating {len(combined)} items...")
-    unique = deduplicate(combined, threshold=cfg["dedup_threshold"])
+    existing_titles = db.get_all_titles()
+    existing_urls = db.get_all_normalized_urls()
+    logger.info(f"  Checking against {len(existing_titles)} existing DB items")
+    new_items, borderline_pairs = deduplicate(
+        combined,
+        threshold=cfg["dedup_threshold"],
+        existing_titles=existing_titles,
+        existing_urls=existing_urls,
+        borderline_low=cfg.get("borderline_threshold", 50),
+    )
+    logger.info(f"  After fuzzy dedup: {len(new_items)} new items")
+    if borderline_pairs:
+        logger.info(f"  Borderline pairs for semantic review: {len(borderline_pairs)}")
 
-    # Filter out items already in the database
-    new_items = [item for item in unique if not db.url_exists(item.url)]
-    logger.info(f"  After dedup: {len(unique)} unique items")
-    logger.info(f"  New (not in DB): {len(new_items)} items")
+    # 5b. Semantic dedup — use Claude to identify same-story pairs for grouping
+    semantic_pairs: list[tuple[str, str]] = []
+    if new_items and borderline_pairs and cfg.get("semantic_dedup", True):
+        logger.info("  Running semantic dedup with Claude...")
+        client = anthropic.Anthropic(api_key=api_key)
+        semantic_pairs = semantic_dedup(client, cfg["model"], borderline_pairs)
+    logger.info(f"  New unique items: {len(new_items)}")
 
     if not new_items:
         logger.info("\nNo new items to process. Generating RSS feed...")
@@ -144,6 +159,12 @@ def main():
     group_count = run_grouper(db)
     logger.info(f"  Created {group_count} groups")
 
+    # 7b. Group semantic matches that the fuzzy grouper may have missed
+    if semantic_pairs:
+        semantic_grouped = db.group_by_title_pairs(semantic_pairs)
+        if semantic_grouped:
+            logger.info(f"  Semantic grouping added {semantic_grouped} additional group{'s' if semantic_grouped != 1 else ''}")
+
     # 8. Generate RSS feed
     logger.info("\n[8/8] Generating RSS feed...")
     rss_count = _generate_rss_feed(db, cfg, logger)
@@ -160,8 +181,7 @@ def main():
     logger.info(f"  Finished:    {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
     logger.info(f"  Duration:    {duration:.1f}s")
     logger.info(f"  Fetched:     {len(combined)} total items")
-    logger.info(f"  Unique:      {len(unique)} after dedup")
-    logger.info(f"  New:         {len(new_items)} not in DB")
+    logger.info(f"  New:         {len(new_items)} after dedup")
     logger.info(f"  Stored:      {stored} items")
     logger.info(f"  Groups:      {group_count}")
     logger.info(f"  RSS feed:    {rss_count} items (score 8+)")

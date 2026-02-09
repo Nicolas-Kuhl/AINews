@@ -381,15 +381,16 @@ def _render_settings_tab(cfg, db, project_root):
 
     rss_col1, rss_col2 = st.columns([3, 1])
     with rss_col1:
-        min_rss_score = st.slider(
+        min_rss_score = st.number_input(
             "Minimum score for RSS feed",
             min_value=1,
             max_value=10,
-            value=8,
+            value=cfg.get("rss_min_score", 8),
             help="Only items with this score or higher will be included in the RSS feed"
         )
 
     with rss_col2:
+        st.markdown("")  # spacing to align button
         if st.button("Generate RSS", key="generate_rss", type="primary"):
             from ainews.rss_generator import generate_rss_feed
 
@@ -533,6 +534,50 @@ def _render_settings_tab(cfg, db, project_root):
                 cfg.pop("lo_prompt", None)
                 save_config(cfg)
                 st.rerun()
+
+    st.divider()
+
+    # Deduplication Settings
+    st.subheader("Deduplication")
+    st.caption("Control how the pipeline detects and removes duplicate news items.")
+    from ainews.config import save_config as _save_config_dedup
+
+    dedup_col1, dedup_col2 = st.columns(2)
+    with dedup_col1:
+        new_dedup_threshold = st.number_input(
+            "Fuzzy match threshold",
+            min_value=1,
+            max_value=100,
+            value=cfg.get("dedup_threshold", 80),
+            help="Items with title similarity above this threshold are auto-removed as duplicates (0-100).",
+            key="dedup_threshold_input",
+        )
+        if new_dedup_threshold != cfg.get("dedup_threshold", 80):
+            cfg["dedup_threshold"] = int(new_dedup_threshold)
+            _save_config_dedup(cfg)
+
+    with dedup_col2:
+        new_borderline_low = st.number_input(
+            "Borderline match threshold",
+            min_value=1,
+            max_value=100,
+            value=cfg.get("borderline_threshold", 50),
+            help="Items with title similarity between this and the fuzzy threshold are sent to Claude for semantic review.",
+            key="borderline_threshold_input",
+        )
+        if new_borderline_low != cfg.get("borderline_threshold", 50):
+            cfg["borderline_threshold"] = int(new_borderline_low)
+            _save_config_dedup(cfg)
+
+    semantic_enabled = st.toggle(
+        "Enable semantic dedup (Claude)",
+        value=cfg.get("semantic_dedup", True),
+        help="Use Claude Sonnet to judge borderline title matches. Adds ~$0.03 per pipeline run when borderline pairs exist.",
+        key="semantic_dedup_toggle",
+    )
+    if semantic_enabled != cfg.get("semantic_dedup", True):
+        cfg["semantic_dedup"] = semantic_enabled
+        _save_config_dedup(cfg)
 
     st.divider()
 

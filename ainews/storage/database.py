@@ -106,6 +106,16 @@ class Database:
         ).fetchone()
         return row is not None
 
+    def get_all_titles(self) -> list[str]:
+        """Return all titles in the database (lowercased) for fuzzy dedup."""
+        rows = self.conn.execute("SELECT LOWER(title) FROM news_items").fetchall()
+        return [row[0] for row in rows]
+
+    def get_all_normalized_urls(self) -> set[str]:
+        """Return all URLs in the database for normalized dedup."""
+        rows = self.conn.execute("SELECT url FROM news_items").fetchall()
+        return {row[0] for row in rows}
+
     def insert(self, item: ProcessedNewsItem) -> int:
         cursor = self.conn.execute(
             """INSERT OR IGNORE INTO news_items
@@ -215,6 +225,50 @@ class Database:
     def clear_all_groups(self):
         self.conn.execute("UPDATE news_items SET group_id = NULL")
         self.conn.commit()
+
+    def group_by_title_pairs(self, title_pairs: list[tuple[str, str]]) -> int:
+        """Group items whose titles match the given (title_a, title_b) pairs.
+
+        For each pair, finds both items in the DB and assigns them the same group_id.
+        If one item is already in a group, the other joins that group.
+        Returns the number of new groupings made.
+        """
+        grouped = 0
+        max_row = self.conn.execute("SELECT COALESCE(MAX(group_id), 0) FROM news_items").fetchone()
+        next_group_id = (max_row[0] or 0) + 1
+
+        for title_a, title_b in title_pairs:
+            row_a = self.conn.execute(
+                "SELECT id, group_id FROM news_items WHERE LOWER(title) = ?",
+                (title_a.lower().strip(),),
+            ).fetchone()
+            row_b = self.conn.execute(
+                "SELECT id, group_id FROM news_items WHERE LOWER(title) = ?",
+                (title_b.lower().strip(),),
+            ).fetchone()
+
+            if not row_a or not row_b or row_a["id"] == row_b["id"]:
+                continue
+
+            # Already in the same group
+            if row_a["group_id"] and row_a["group_id"] == row_b["group_id"]:
+                continue
+
+            # Pick a group_id: use existing if one has it, otherwise assign new
+            if row_a["group_id"]:
+                gid = row_a["group_id"]
+            elif row_b["group_id"]:
+                gid = row_b["group_id"]
+            else:
+                gid = next_group_id
+                next_group_id += 1
+
+            self.conn.execute("UPDATE news_items SET group_id = ? WHERE id = ?", (gid, row_a["id"]))
+            self.conn.execute("UPDATE news_items SET group_id = ? WHERE id = ?", (gid, row_b["id"]))
+            grouped += 1
+
+        self.conn.commit()
+        return grouped
 
     def commit(self):
         self.conn.commit()

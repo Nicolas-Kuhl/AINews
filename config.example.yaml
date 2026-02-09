@@ -3,6 +3,8 @@ model: claude-sonnet-4-5-20250929
 lo_model: claude-opus-4-6
 lo_web_research: true
 lo_search_count: 3
+semantic_dedup: true
+borderline_threshold: 50
 feeds:
 # OpenAI
 - name: OpenAI News
