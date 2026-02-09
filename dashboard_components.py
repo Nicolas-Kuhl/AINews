@@ -289,34 +289,17 @@ def _render_item_details(primary, related, db, cfg):
         st.markdown(primary.score_reasoning)
         st.markdown("")
 
-    # Article content (collapsible)
-    if primary.content:
-        with st.expander("Article Content", expanded=False):
-            st.markdown(primary.content)
-
     # Learning objectives
     st.markdown('<span class="section-pill">Learning Objectives</span>', unsafe_allow_html=True)
     _render_learning_objectives(primary, cfg, db)
 
-    # Metadata (no heading)
-    st.markdown("---")
-    col1, col2, col3 = st.columns(3)
-    col1.caption(f"**Category:** {primary.category}")
-    col2.caption(f"**Fetched via:** {primary.fetched_via}")
-    if primary.published:
-        # Format as "YYYY-MM-DD HH:MM" in UTC
-        date_str = primary.published.strftime('%Y-%m-%d %H:%M')
-        col3.caption(f"**Published:** {date_str} UTC")
-
-    # Related sources
+    # All sources (when grouped)
     if related:
-        st.markdown("---")
-        st.markdown(f"### All Sources ({len([primary] + related)} total)")
-        for idx, item in enumerate([primary] + related, 1):
-            # Format date as "Mon DD HH:MM" in UTC
+        all_items = [primary] + related
+        st.markdown(f'<span class="section-pill">All Sources ({len(all_items)})</span>', unsafe_allow_html=True)
+        for idx, item in enumerate(all_items, 1):
             date_str = item.published.strftime("%b %d %H:%M") if item.published else "—"
 
-            # Score pill color
             if item.score >= 8:
                 score_badge = f'<span style="background-color:#d32f2f;color:#fff;padding:0.1rem 0.4rem;border-radius:6px;font-size:0.7rem;font-weight:700;">{item.score}</span>'
             elif item.score >= 5:
@@ -328,6 +311,21 @@ def _render_item_details(primary, related, db, cfg):
                 f"{idx}. [{item.title}]({item.url}) · **{item.source}** · {date_str} · {score_badge}",
                 unsafe_allow_html=True
             )
+        st.markdown("")
+
+    # Metadata footer
+    st.markdown("---")
+    col1, col2, col3 = st.columns(3)
+    col1.caption(f"**Category:** {primary.category}")
+    col2.caption(f"**Fetched via:** {primary.fetched_via}")
+    if primary.published:
+        date_str = primary.published.strftime('%Y-%m-%d %H:%M')
+        col3.caption(f"**Published:** {date_str} UTC")
+
+    # Article content (collapsible, at the bottom)
+    if primary.content:
+        with st.expander("Full Article Content", expanded=False):
+            st.markdown(primary.content)
 
 
 def _render_learning_objectives(primary, cfg, db):
