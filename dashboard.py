@@ -199,7 +199,7 @@ def main():
         if not grouped:
             st.info("📡 No new release items found matching your filters.")
         else:
-            _render_news_list(grouped, db, cfg)
+            _render_news_list(grouped, cfg["db_path"], cfg)
 
     # Industry tab (using cached query + client-side search)
     with tab_industry:
@@ -209,7 +209,7 @@ def main():
         if not grouped:
             st.info("📰 No industry items found matching your filters.")
         else:
-            _render_news_list(grouped, db, cfg)
+            _render_news_list(grouped, cfg["db_path"], cfg)
 
     # Settings tab
     with tab_settings:

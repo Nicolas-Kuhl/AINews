@@ -173,12 +173,20 @@ def generate_learning_objectives(cfg: dict, item):
 
 
 @st.fragment
-def _render_news_list(grouped_items, db, cfg):
+def _render_news_list(grouped_items, db_path, cfg):
     """Render list of grouped news items as a compact table.
 
     Decorated with @st.fragment so that expand/collapse and acknowledge
     clicks only rerun this fragment, not the entire page.
+
+    Accepts db_path (not a Database object) because fragments can rerun
+    after main() has closed its connection.  A fresh connection is opened
+    here so writes (acknowledge, update LO) always work.
     """
+    from ainews.storage.database import Database
+
+    db = Database(db_path)
+
     # Table header
     with st.container():
         h_cols = st.columns([0.5, 0.6, 5.3, 1.8, 1.2, 0.9])
