@@ -27,9 +27,11 @@ Analyze EACH of the following news items and provide for each:
    - Novelty (truly new vs. incremental update)
 3. Learning objectives (3-5 bullet points): what a course covering this topic should teach.
    Each bullet should be a concise, actionable learning objective starting with a verb.
-4. A category: either "New Releases" or "Industry"
+4. A category — one of: "New Releases", "Research", "Business", or "Developer Tools"
    - "New Releases": New model launches, new product releases, new tool announcements, new API versions, new open-source releases
-   - "Industry": Partnerships, research papers, policy, funding, analysis, opinions, updates to existing products
+   - "Research": Research papers, benchmarks, technical analyses, academic publications, novel techniques
+   - "Business": Partnerships, funding rounds, acquisitions, hiring, policy, regulation, market analysis, corporate strategy
+   - "Developer Tools": SDKs, frameworks, libraries, developer platforms, tutorials, infrastructure, API updates, tooling
 
 Score guide:
 - 9-10: Industry-shaping (major model release, breakthrough, major policy) with high educational value
@@ -39,7 +41,7 @@ Score guide:
 - 1-2: Low relevance (routine, not newsworthy for educational video)
 
 Respond in valid JSON only — a JSON array with one object per item, in the same order as the input.
-Each object must have: {"id": N, "summary": "...", "score": N, "reasoning": "...", "learning_objectives": ["...", "...", "..."], "category": "New Releases" or "Industry"}
+Each object must have: {"id": N, "summary": "...", "score": N, "reasoning": "...", "learning_objectives": ["...", "...", "..."], "category": "New Releases" or "Research" or "Business" or "Developer Tools"}
 
 NEWS ITEMS:
 {items_text}
@@ -55,6 +57,7 @@ def _format_item_for_batch(index: int, item: RawNewsItem) -> str:
 def _score_batch(
     client: anthropic.Anthropic, model: str, items: list[RawNewsItem],
     start_index: int, scoring_prompt: str,
+    categories: list[str] | None = None,
 ) -> list[ProcessedNewsItem]:
     """Score a batch of items in a single API call."""
     items_text = "\n\n".join(
@@ -90,7 +93,8 @@ def _score_batch(
                 published=item.published,
                 summary=item.description or "",
                 score=5, score_reasoning=f"Auto-scored (API error: {e})",
-                category="Industry", fetched_via=item.fetched_via,
+                category=(categories[-1] if categories else "Developer Tools"),
+                fetched_via=item.fetched_via,
             )
             for item in items
         ]
@@ -110,9 +114,11 @@ def _score_batch(
             learning_objectives = "\n".join(f"- {obj}" for obj in raw_objectives if obj)
         else:
             learning_objectives = str(raw_objectives)
-        category = data.get("category", "Industry")
-        if category not in ("New Releases", "Industry"):
-            category = "Industry"
+        valid_categories = set(categories) if categories else {"New Releases", "Research", "Business", "Developer Tools"}
+        fallback_category = categories[-1] if categories else "Developer Tools"
+        category = data.get("category", fallback_category)
+        if category not in valid_categories:
+            category = fallback_category
 
         print(f"  [Scorer]   Item {start_index + i}: {score}/10 | {category} | {item.title[:50]}")
 
@@ -132,6 +138,7 @@ def score_items(
     items: list[RawNewsItem],
     batch_size: int = 10,
     scoring_prompt: Optional[str] = None,
+    categories: list[str] | None = None,
 ) -> list[ProcessedNewsItem]:
     """Score a list of raw news items using Claude in batches."""
     batch_size = max(1, batch_size)
@@ -145,7 +152,7 @@ def score_items(
         end = min(start + batch_size, total)
         batch = items[start:end]
         print(f"  [Scorer] Scoring batch {batch_num + 1}/{num_batches} (items {start + 1}-{end} of {total})...")
-        batch_results = _score_batch(client, model, batch, start + 1, prompt)
+        batch_results = _score_batch(client, model, batch, start + 1, prompt, categories)
         processed.extend(batch_results)
 
     return processed

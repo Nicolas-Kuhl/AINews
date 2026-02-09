@@ -145,6 +145,7 @@ def main():
         client, cfg["model"], new_items,
         batch_size=cfg.get("scoring_batch_size", 10),
         scoring_prompt=cfg.get("scoring_prompt"),
+        categories=cfg.get("categories"),
     )
 
     # Store results

@@ -169,10 +169,10 @@ def main():
         st.divider()
         search_query = st.text_input("🔍 Search titles/summaries", placeholder="Type to filter...")
 
-    # Tabs
-    tab_releases, tab_industry, tab_settings, tab_about = st.tabs(
-        ["New Releases", "Industry News", "Settings", "About"]
-    )
+    # Tabs — dynamic from config categories
+    categories = cfg.get("categories", ["New Releases", "Research", "Business", "Developer Tools"])
+    tab_names = categories + ["Settings", "About"]
+    tabs = st.tabs(tab_names)
 
     # Prepare filter arguments
     start_date = None
@@ -191,32 +191,23 @@ def main():
         sort_dir=sort_dir,
     )
 
-    # New Releases tab (using cached query + client-side search)
-    with tab_releases:
-        grouped = get_grouped_items(cfg["db_path"], "New Releases", **filter_kwargs)
-        grouped = filter_grouped_items(grouped, search_query)
-        st.subheader(f"New Releases ({len(grouped)})")
-        if not grouped:
-            st.info("📡 No new release items found matching your filters.")
-        else:
-            _render_news_list(grouped, cfg["db_path"], cfg)
-
-    # Industry tab (using cached query + client-side search)
-    with tab_industry:
-        grouped = get_grouped_items(cfg["db_path"], "Industry", **filter_kwargs)
-        grouped = filter_grouped_items(grouped, search_query)
-        st.subheader(f"Industry News ({len(grouped)})")
-        if not grouped:
-            st.info("📰 No industry items found matching your filters.")
-        else:
-            _render_news_list(grouped, cfg["db_path"], cfg)
+    # Category tabs (dynamic)
+    for i, category in enumerate(categories):
+        with tabs[i]:
+            grouped = get_grouped_items(cfg["db_path"], category, **filter_kwargs)
+            grouped = filter_grouped_items(grouped, search_query)
+            st.subheader(f"{category} ({len(grouped)})")
+            if not grouped:
+                st.info(f"No {category.lower()} items found matching your filters.")
+            else:
+                _render_news_list(grouped, cfg["db_path"], cfg)
 
     # Settings tab
-    with tab_settings:
+    with tabs[-2]:
         _render_settings_tab(cfg, db, PROJECT_ROOT)
 
     # About tab
-    with tab_about:
+    with tabs[-1]:
         st.markdown("""
 ### AI News Aggregator
 
@@ -240,9 +231,9 @@ The fetch pipeline runs in five stages, triggered from the Settings tab or via t
    compared. Titles are then fuzzy-matched (Levenshtein ratio) to catch near-duplicates that
    share different URLs.
 3. **Score** — Items are sent to **Claude Sonnet** in batches. For each item Claude returns
-   a relevance score (1–10), a category (*New Releases* or *Industry*), a summary, score
-   reasoning, and initial learning objectives. The scoring prompt is fully customizable from
-   the Settings tab.
+   a relevance score (1–10), a category (*New Releases*, *Research*, *Business*, or
+   *Developer Tools*), a summary, score reasoning, and initial learning objectives. The
+   scoring prompt is fully customizable from the Settings tab.
 4. **Group** — The smart grouper clusters articles covering the same story by extracting
    significant words from titles and fuzzy-matching them. Vendor sources (OpenAI, Anthropic,
    Google, etc.) are preferred as the primary link in each group.
@@ -252,7 +243,7 @@ The fetch pipeline runs in five stages, triggered from the Settings tab or via t
 
 ### Dashboard
 
-- **New Releases** and **Industry** tabs separate product launches from broader news
+- **Category tabs** (New Releases, Research, Business, Developer Tools) organize content by type
 - **Sidebar filters** — score range, date range, sort order, and acknowledged-item visibility
 - **Expandable rows** — click any row to reveal the full summary, score reasoning, learning
   objectives, metadata pills, and grouped source links
