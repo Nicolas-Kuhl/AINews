@@ -135,9 +135,9 @@ class Database:
         self.conn.commit()
 
     def acknowledge_before_date(self, before_date) -> int:
-        """Acknowledge all unacknowledged items processed before the given date."""
+        """Acknowledge all unacknowledged items published before the given date."""
         cursor = self.conn.execute(
-            "UPDATE news_items SET acknowledged = 1 WHERE acknowledged = 0 AND processed_at < ?",
+            "UPDATE news_items SET acknowledged = 1 WHERE acknowledged = 0 AND published < ?",
             (before_date.isoformat(),),
         )
         self.conn.commit()
