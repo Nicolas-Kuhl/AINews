@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -256,6 +256,25 @@ class Database:
 
         return result
 
+    def query_items(
+        self,
+        min_score: int = 0,
+        max_score: int = 10,
+        show_acknowledged: bool = False,
+        sort_by: str = "score",
+        sort_dir: str = "DESC",
+        limit: int = 200,
+    ) -> list[ProcessedNewsItem]:
+        """Query items without grouping (flat list). Used by RSS generation."""
+        return self.query(
+            min_score=min_score,
+            max_score=max_score,
+            show_acknowledged=show_acknowledged,
+            sort_by=sort_by,
+            sort_dir=sort_dir,
+            limit=limit,
+        )
+
     def get_all_sources(self) -> list[str]:
         rows = self.conn.execute(
             "SELECT DISTINCT source FROM news_items ORDER BY source"
@@ -269,7 +288,7 @@ class Database:
                       COUNT(DISTINCT source) as source_count
                FROM news_items"""
         ).fetchone()
-        today = datetime.utcnow().date().isoformat()
+        today = datetime.now(timezone.utc).date().isoformat()
         today_count = self.conn.execute(
             "SELECT COUNT(*) as cnt FROM news_items WHERE processed_at LIKE ?",
             (f"{today}%",),
@@ -382,6 +401,12 @@ class Database:
             group_id=group_id,
             lo_generated_with_opus=lo_generated_with_opus,
         )
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
 
     def close(self):
         self.conn.close()

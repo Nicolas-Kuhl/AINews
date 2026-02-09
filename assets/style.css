@@ -4,13 +4,17 @@
 :root {
     --score-high: #d32f2f;
     --score-mid: #f39c12;
-    --score-low: #a5aacf;
+    --score-low: #6b7280;
     --bg-dark: #130f25;
     --bg-panel: #1e1a36;
+    --bg-surface: #241f3d;
     --accent-pink: #e7005e;
+    --accent-pink-hover: #ff1675;
+    --accent-pink-active: #c9004d;
     --text-primary: #ffffff;
-    --text-secondary: #a5aacf;
+    --text-secondary: #b0b5d4;
     --border-color: #383461;
+    --border-subtle: rgba(165, 170, 207, 0.15);
 }
 
 /* ---- Global Styles ---- */
@@ -45,7 +49,7 @@ h1 {
     color: var(--text-primary) !important;
     font-weight: 700;
     letter-spacing: -0.02em;
-    margin-bottom: 1.5rem !important;
+    margin-bottom: 0.5rem !important;
     font-size: 2.25rem;
 }
 
@@ -76,7 +80,7 @@ a {
 }
 
 a:hover {
-    color: #ff1675 !important;
+    color: var(--accent-pink-hover) !important;
 }
 
 /* News title links - clean and simple */
@@ -90,8 +94,10 @@ a:hover {
 [data-testid="stTabs"] button {
     color: var(--text-secondary) !important;
     font-weight: 500;
+    font-size: 0.9rem;
     border-bottom: 2px solid transparent;
     transition: color 0.15s ease, border-color 0.15s ease;
+    padding: 0.75rem 1.25rem !important;
 }
 
 [data-testid="stTabs"] button[aria-selected="true"] {
@@ -107,8 +113,8 @@ a:hover {
 hr {
     border: none !important;
     height: 1px !important;
-    background-color: rgba(165, 170, 207, 0.2) !important;
-    margin: 2rem 0 !important;
+    background-color: var(--border-subtle) !important;
+    margin: 1.75rem 0 !important;
 }
 
 /* ---- Buttons ---- */
@@ -153,7 +159,7 @@ hr {
 .stButton > button {
     background: transparent !important;
     color: var(--text-secondary) !important;
-    border: 1px solid rgba(165, 170, 207, 0.2) !important;
+    border: 1px solid var(--border-subtle) !important;
     border-radius: 8px !important;
     font-weight: 600;
     padding: 0.4rem 1rem !important;
@@ -175,15 +181,15 @@ hr {
     outline: none !important;
 }
 
-/* Primary buttons - pink accent */
+/* Primary buttons - pink accent (properly sized) */
 .stButton > button[kind="primary"],
 .stButton > button[kind="primary"]:focus {
     background-color: var(--accent-pink) !important;
     color: var(--text-primary) !important;
     border: none !important;
-    border-radius: 4px !important;
-    padding: 0.125rem 0.5rem !important;
-    font-size: 0.5rem !important;
+    border-radius: 6px !important;
+    padding: 0.35rem 0.9rem !important;
+    font-size: 0.8rem !important;
     font-weight: 600;
     transition: all 0.15s ease;
     box-shadow: none !important;
@@ -192,20 +198,22 @@ hr {
 }
 
 .stButton > button[kind="primary"]:hover {
-    background-color: #ff1675 !important;
+    background-color: var(--accent-pink-hover) !important;
     color: var(--text-primary) !important;
-    box-shadow: none !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(231, 0, 94, 0.3) !important;
 }
 
 .stButton > button[kind="primary"]:active {
-    background-color: #c9004d !important;
+    background-color: var(--accent-pink-active) !important;
+    transform: translateY(0);
 }
 
 /* Target text inside primary buttons specifically */
 .stButton > button[kind="primary"] p,
 .stButton > button[kind="primary"] span,
 .stButton > button[kind="primary"] div {
-    font-size: 0.5rem !important;
+    font-size: 0.8rem !important;
 }
 
 /* ---- Expander (Detail Panels) ---- */
@@ -233,21 +241,22 @@ hr {
 
 /* ---- Text Inputs ---- */
 input[type="text"], textarea {
-    background-color: #2a2753 !important;
+    background-color: var(--bg-surface) !important;
     color: var(--text-primary) !important;
     border: 1px solid var(--border-color) !important;
     border-radius: 8px !important;
-    transition: border-color 0.15s ease;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 input[type="text"]:focus, textarea:focus {
     border-color: var(--accent-pink) !important;
+    box-shadow: 0 0 0 2px rgba(231, 0, 94, 0.15) !important;
 }
 
 /* ---- Selectbox / Radio / Slider ---- */
 [data-testid="stSelectbox"] > div > div,
 [data-baseweb="select"] {
-    background-color: #2a2753 !important;
+    background-color: var(--bg-surface) !important;
     color: var(--text-primary) !important;
 }
 
@@ -272,14 +281,14 @@ input[type="text"]:focus, textarea:focus {
 
 /* ---- Code Tags ---- */
 code {
-    background-color: rgba(231, 0, 94, 0.15) !important;
+    background-color: rgba(231, 0, 94, 0.12) !important;
     color: var(--accent-pink) !important;
     padding: 0.15rem 0.5rem;
     border-radius: 4px;
     font-size: 0.75rem;
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
     font-weight: 600;
-    border: 1px solid rgba(231, 0, 94, 0.25);
+    border: 1px solid rgba(231, 0, 94, 0.2);
     vertical-align: middle;
     margin-left: 0.4rem;
 }
@@ -296,6 +305,34 @@ code {
     font-size: 0.8rem !important;
     font-weight: 500;
     letter-spacing: 0.02em;
+}
+
+/* ---- Status Bar (run info) ---- */
+.status-bar {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.75rem;
+    background: rgba(30, 26, 54, 0.5);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    padding: 0.5rem 1rem;
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+}
+
+.status-bar strong {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.status-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: #10b981;
+    margin-right: 0.25rem;
 }
 
 /* ---- Containers & Columns ---- */
@@ -328,7 +365,6 @@ code {
 }
 
 /* ---- News Table ---- */
-/* These old classes are no longer used but kept for reference */
 .news-table-header {
     background-color: rgba(30, 26, 54, 0.6);
     border-radius: 8px 8px 0 0;
@@ -366,18 +402,18 @@ code {
 
 /* Style containers for news rows with hover effect */
 [data-testid="stHorizontalBlock"]:has(.stButton) {
-    padding: 0.85rem 0.5rem;
+    padding: 0.65rem 0.5rem;
     transition: all 0.15s ease;
     margin: 0 !important;
     border: none !important;
     background-color: transparent;
     border-radius: 4px;
+    border-left: 2px solid transparent !important;
 }
 
 [data-testid="stHorizontalBlock"]:has(.stButton):hover {
-    background-color: rgba(30, 26, 54, 0.6);
+    background-color: rgba(30, 26, 54, 0.5);
     border-left: 2px solid var(--accent-pink) !important;
-    padding-left: calc(0.5rem - 2px);
 }
 
 /* Detail panel styling - clean and minimal */
@@ -397,7 +433,7 @@ code {
 /* Detail panel section headers - blue pills */
 .section-pill {
     display: inline-block;
-    background-color: rgba(59, 130, 246, 0.2);
+    background-color: rgba(59, 130, 246, 0.15);
     color: var(--text-primary);
     padding: 0.25rem 0.75rem;
     border-radius: 12px;
@@ -407,7 +443,7 @@ code {
     letter-spacing: 0.08em;
     margin-top: 1.5rem;
     margin-bottom: 0.75rem;
-    border: 1px solid rgba(59, 130, 246, 0.3);
+    border: 1px solid rgba(59, 130, 246, 0.25);
 }
 
 .news-table-row + [data-testid="stVerticalBlock"] h3 {
@@ -428,8 +464,8 @@ code {
 /* Detail panel text content */
 .news-table-row + [data-testid="stVerticalBlock"] p {
     color: var(--text-secondary) !important;
-    font-size: 0.75rem;
-    line-height: 1.6;
+    font-size: 0.8rem;
+    line-height: 1.7;
     margin-bottom: 0.6rem;
 }
 
@@ -444,13 +480,48 @@ code {
 .news-table-row + [data-testid="stVerticalBlock"] li {
     color: var(--text-secondary) !important;
     margin-bottom: 0.5rem;
-    line-height: 1.6;
-    font-size: 0.75rem;
+    line-height: 1.7;
+    font-size: 0.8rem;
 }
 
 /* Detail panel captions (metadata) */
 .news-table-row + [data-testid="stVerticalBlock"] .stCaption {
     font-size: 0.75rem !important;
+}
+
+/* ---- Expanded Detail Panel ---- */
+.detail-panel {
+    background: linear-gradient(135deg, rgba(30, 26, 54, 0.7), rgba(36, 31, 61, 0.5));
+    border-left: 3px solid var(--accent-pink);
+    border-radius: 0 10px 10px 0;
+    padding: 1.5rem 1.75rem;
+    margin: 0.5rem 0 1.25rem 1rem;
+}
+
+/* ---- Opus Badge ---- */
+.opus-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(99, 102, 241, 0.1));
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    color: #c4b5fd;
+    padding: 0.2rem 0.65rem;
+    border-radius: 12px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+}
+
+/* ---- Source Toggle Rows ---- */
+.source-row {
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--border-subtle);
+    transition: background-color 0.15s ease;
+}
+
+.source-row:hover {
+    background-color: rgba(30, 26, 54, 0.3);
 }
 
 /* ---- Spinner ---- */
@@ -472,4 +543,23 @@ code {
 
 .news-row-fade-out {
     animation: fadeOut 0.6s ease-out forwards;
+}
+
+/* ---- Scrollbar Styling ---- */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-dark);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(165, 170, 207, 0.4);
 }

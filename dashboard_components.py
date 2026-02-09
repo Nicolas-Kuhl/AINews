@@ -191,38 +191,22 @@ def _render_news_list(grouped_items, db, cfg):
 
 def _render_news_item(primary, related, db, cfg):
     """Render a single news item as a table row with expandable details."""
-    import time
-
     # Check if expanded
     expand_key = f"expand_{primary.id}"
     is_expanded = st.session_state.get(expand_key, False)
 
-    # Check if item is being acknowledged (for animation)
+    # Handle acknowledge: process immediately without blocking animation
     ack_pending_key = f"ack_pending_{primary.id}"
-    ack_timestamp = st.session_state.get(ack_pending_key, None)
+    if st.session_state.get(ack_pending_key, False):
+        db.acknowledge(primary.id)
+        for rel in related:
+            if rel.id:
+                db.acknowledge(rel.id)
+        st.session_state.pop(ack_pending_key, None)
+        return
 
-    # If enough time has passed, actually acknowledge
-    if ack_timestamp is not None:
-        elapsed = time.time() - ack_timestamp
-        if elapsed >= 0.6:  # 600ms animation duration
-            db.acknowledge(primary.id)
-            for rel in related:
-                if rel.id:
-                    db.acknowledge(rel.id)
-            # Clear the pending state
-            st.session_state.pop(ack_pending_key, None)
-            # Don't render this item anymore
-            return
-        # Still animating - render with fade class
-        is_acknowledging = True
-    else:
-        is_acknowledging = False
-
-    # Main row (using container without HTML div wrapper)
+    # Main row
     with st.container():
-        if is_acknowledging:
-            st.markdown(f'<div class="news-row-fade-out" id="row_{primary.id}">', unsafe_allow_html=True)
-
         cols = st.columns([0.5, 0.6, 5.3, 1.8, 1.2, 0.9])
 
         # Expand/collapse button (first column)
@@ -234,11 +218,11 @@ def _render_news_item(primary, related, db, cfg):
 
         # Score pill with color coding
         if primary.score >= 8:
-            pill_color = "#d32f2f"  # Red
+            pill_color = "#d32f2f"
         elif primary.score >= 5:
-            pill_color = "#f39c12"  # Orange
+            pill_color = "#f39c12"
         else:
-            pill_color = "#6b7280"  # Gray
+            pill_color = "#6b7280"
 
         cols[1].markdown(
             f'<span style="background-color:{pill_color};color:#ffffff;padding:0.25rem 0.65rem;'
@@ -258,31 +242,20 @@ def _render_news_item(primary, related, db, cfg):
 
         # Date (with time)
         if primary.published:
-            # Format as "Mon DD HH:MM" in UTC
             date_str = primary.published.strftime("%b %d %H:%M")
         else:
             date_str = "—"
         cols[4].caption(date_str)
 
-        # Acknowledge button (always visible)
+        # Acknowledge button
         with cols[5]:
             if not primary.acknowledged:
                 if st.button("Ack", key=f"ack_{primary.id}", type="primary"):
-                    import time
-                    # Set timestamp to trigger animation
-                    st.session_state[ack_pending_key] = time.time()
-                    # Clear cache so acknowledged items update immediately
+                    st.session_state[ack_pending_key] = True
                     st.cache_data.clear()
                     st.rerun()
             else:
                 st.markdown("✅")
-
-        if is_acknowledging:
-            st.markdown('</div>', unsafe_allow_html=True)
-            # Use st.empty() to trigger rerun after delay
-            import time
-            time.sleep(0.65)
-            st.rerun()
 
     # Expandable details (only shown when expanded)
     if is_expanded:
@@ -347,7 +320,10 @@ def _render_learning_objectives(primary, cfg, db):
 
     # Show badge if generated with Opus
     if primary.lo_generated_with_opus and not is_generating:
-        st.caption("Generated with Claude Opus 4.6")
+        st.markdown(
+            '<span class="opus-badge">&#9679; Generated with Claude Opus 4.6</span>',
+            unsafe_allow_html=True,
+        )
         st.markdown("")
 
     # Generate button

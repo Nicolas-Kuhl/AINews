@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 
@@ -27,7 +27,7 @@ class ProcessedNewsItem:
     learning_objectives: str = ""
     category: str = "Industry"
     fetched_via: str = ""
-    processed_at: datetime = field(default_factory=datetime.utcnow)
+    processed_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     id: Optional[int] = None
     acknowledged: bool = False
     group_id: Optional[int] = None
