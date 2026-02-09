@@ -289,6 +289,17 @@ class Database:
         ).fetchall()
         return [{"id": r["id"], "title": r["title"], "url": r["url"]} for r in rows]
 
+    def get_all_items_for_dedup(self) -> list[dict]:
+        """Get id, title, url, source, summary for semantic dedup."""
+        rows = self.conn.execute(
+            "SELECT id, title, url, source, summary FROM news_items ORDER BY score DESC"
+        ).fetchall()
+        return [
+            {"id": r["id"], "title": r["title"], "url": r["url"],
+             "source": r["source"], "summary": r["summary"] or ""}
+            for r in rows
+        ]
+
     def query_grouped(
         self,
         min_score: int = 0,

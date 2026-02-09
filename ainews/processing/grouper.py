@@ -100,7 +100,7 @@ def deep_semantic_dedup(
     model: str,
     fuzzy_low: int = 30,
     fuzzy_high: int = 70,
-    batch_size: int = 30,
+    batch_size: int = 15,
 ) -> int:
     """Scan all DB items for semantic duplicates using Claude.
 
@@ -120,7 +120,7 @@ def deep_semantic_dedup(
     Returns:
         Number of new groupings created.
     """
-    items = db.get_all_items_minimal()
+    items = db.get_all_items_for_dedup()
     if len(items) < 2:
         return 0
 
@@ -147,14 +147,22 @@ def deep_semantic_dedup(
 
     logger.info(f"  Deep semantic dedup: {len(candidates)} candidate pairs to review.")
 
-    # Send to Claude in batches
+    # Send to Claude in batches (smaller batches since we include summaries)
     confirmed_pairs: list[tuple[str, str]] = []
     for batch_start in range(0, len(candidates), batch_size):
         batch = candidates[batch_start:batch_start + batch_size]
-        pairs_text = "\n".join(
-            f'{i+1}. A: "{a["title"]}"\n   B: "{b["title"]}"'
-            for i, (a, b) in enumerate(batch)
-        )
+
+        pair_parts = []
+        for i, (a, b) in enumerate(batch):
+            summary_a = a["summary"][:200] if a["summary"] else "(no summary)"
+            summary_b = b["summary"][:200] if b["summary"] else "(no summary)"
+            pair_parts.append(
+                f'{i+1}. A: "{a["title"]}" ({a["source"]})\n'
+                f'   Summary: {summary_a}\n'
+                f'   B: "{b["title"]}" ({b["source"]})\n'
+                f'   Summary: {summary_b}'
+            )
+        pairs_text = "\n\n".join(pair_parts)
 
         try:
             response = client.messages.create(
@@ -162,7 +170,7 @@ def deep_semantic_dedup(
                 max_tokens=1024,
                 messages=[{
                     "role": "user",
-                    "content": f"""You are a news deduplication assistant. For each pair below, determine if headline A is about the same specific news story/event as headline B.
+                    "content": f"""You are a news deduplication assistant. For each pair below, determine if article A is about the same specific news story/event as article B. Use the titles, sources, and summaries to make your judgment.
 
 Answer ONLY with a JSON array of pair numbers that ARE about the same story. If none match, return an empty array [].
 
