@@ -30,6 +30,9 @@ def load_config(path: Path = CONFIG_PATH) -> dict:
     cfg.setdefault("feed_timeout", 15)
     cfg.setdefault("max_items_per_feed", 20)
     cfg.setdefault("categories", ["New Releases", "Research", "Business", "Developer Tools"])
+    cfg.setdefault("content_fetching", True)
+    cfg.setdefault("content_max_chars", 10000)
+    cfg.setdefault("content_score_chars", 3000)
 
     return cfg
 

@@ -10,6 +10,9 @@ categories:
   - Research
   - Business
   - Developer Tools
+content_fetching: true
+content_max_chars: 10000
+content_score_chars: 3000
 feeds:
 # OpenAI
 - name: OpenAI News

@@ -15,6 +15,7 @@ ddgs>=9.10.0
 httpx>=0.28.1
 lxml>=5.3.1
 cssselect>=1.4.0
+trafilatura>=1.6.0
 
 # Browser automation
 playwright>=1.58.0

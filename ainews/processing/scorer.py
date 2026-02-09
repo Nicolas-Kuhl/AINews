@@ -12,7 +12,9 @@ You are an AI news analyst for an educational video production company.
 We create educational videos that teach audiences about AI developments,
 how new tools work, and what they mean for the industry.
 
-Analyze EACH of the following news items and provide for each:
+Analyze EACH of the following news items and provide for each.
+When "Article Content" is provided, use it for accurate, in-depth analysis.
+
 1. A detailed summary (4-6 sentences) that:
    - Explains what happened and why it matters
    - Highlights the educational angle: what can viewers learn from this?
@@ -48,27 +50,31 @@ NEWS ITEMS:
 """
 
 
-def _format_item_for_batch(index: int, item: RawNewsItem) -> str:
+def _format_item_for_batch(index: int, item: RawNewsItem, content_max: int = 3000) -> str:
     """Format a single item for inclusion in a batch prompt."""
     desc = item.description or "(no description available)"
-    return f"[Item {index}]\nTitle: {item.title}\nSource: {item.source}\nDescription: {desc}"
+    parts = [f"[Item {index}]", f"Title: {item.title}", f"Source: {item.source}", f"Description: {desc}"]
+    if item.content:
+        parts.append(f"Article Content: {item.content[:content_max]}")
+    return "\n".join(parts)
 
 
 def _score_batch(
     client: anthropic.Anthropic, model: str, items: list[RawNewsItem],
     start_index: int, scoring_prompt: str,
     categories: list[str] | None = None,
+    content_max: int = 3000,
 ) -> list[ProcessedNewsItem]:
     """Score a batch of items in a single API call."""
     items_text = "\n\n".join(
-        _format_item_for_batch(start_index + i, item) for i, item in enumerate(items)
+        _format_item_for_batch(start_index + i, item, content_max) for i, item in enumerate(items)
     )
     prompt = scoring_prompt.replace("{items_text}", items_text)
 
     try:
         response = client.messages.create(
             model=model,
-            max_tokens=600 * len(items),
+            max_tokens=800 * len(items),
             messages=[{"role": "user", "content": prompt}],
         )
         text = response.content[0].text.strip()
@@ -90,7 +96,7 @@ def _score_batch(
         return [
             ProcessedNewsItem(
                 title=item.title, url=item.url, source=item.source,
-                published=item.published,
+                published=item.published, content=item.content,
                 summary=item.description or "",
                 score=5, score_reasoning=f"Auto-scored (API error: {e})",
                 category=(categories[-1] if categories else "Developer Tools"),
@@ -124,7 +130,7 @@ def _score_batch(
 
         processed.append(ProcessedNewsItem(
             title=item.title, url=item.url, source=item.source,
-            published=item.published,
+            published=item.published, content=item.content,
             summary=summary, score=score, score_reasoning=reasoning,
             learning_objectives=learning_objectives,
             category=category, fetched_via=item.fetched_via,
@@ -139,6 +145,7 @@ def score_items(
     batch_size: int = 10,
     scoring_prompt: Optional[str] = None,
     categories: list[str] | None = None,
+    content_max: int = 3000,
 ) -> list[ProcessedNewsItem]:
     """Score a list of raw news items using Claude in batches."""
     batch_size = max(1, batch_size)
@@ -152,7 +159,7 @@ def score_items(
         end = min(start + batch_size, total)
         batch = items[start:end]
         print(f"  [Scorer] Scoring batch {batch_num + 1}/{num_batches} (items {start + 1}-{end} of {total})...")
-        batch_results = _score_batch(client, model, batch, start + 1, prompt, categories)
+        batch_results = _score_batch(client, model, batch, start + 1, prompt, categories, content_max)
         processed.extend(batch_results)
 
     return processed

@@ -10,6 +10,7 @@ from pathlib import Path
 import anthropic
 
 from ainews.config import load_config
+from ainews.fetchers.content_fetcher import fetch_content_for_items
 from ainews.fetchers.rss_fetcher import fetch_all_feeds
 from ainews.fetchers.web_searcher import search_all_queries
 from ainews.processing.deduplicator import deduplicate, semantic_dedup
@@ -138,6 +139,18 @@ def main():
         write_last_run_timestamp(data_dir / ".last_run")
         return
 
+    # 5c. Fetch full article content (after dedup, before scoring)
+    content_count = 0
+    if cfg.get("content_fetching", True) and new_items:
+        logger.info(f"\n[5c] Fetching article content for {len(new_items)} items...")
+        content_count = fetch_content_for_items(
+            new_items,
+            max_content_length=cfg.get("content_max_chars", 10000),
+            max_concurrent=10,
+            timeout=15,
+        )
+        logger.info(f"  Got content for {content_count}/{len(new_items)} items")
+
     # 6. Score with Claude
     logger.info(f"\n[6/8] Scoring {len(new_items)} items with Claude ({cfg['model']})...")
     client = anthropic.Anthropic(api_key=api_key)
@@ -146,6 +159,7 @@ def main():
         batch_size=cfg.get("scoring_batch_size", 10),
         scoring_prompt=cfg.get("scoring_prompt"),
         categories=cfg.get("categories"),
+        content_max=cfg.get("content_score_chars", 3000),
     )
 
     # Store results

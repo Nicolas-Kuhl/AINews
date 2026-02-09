@@ -96,6 +96,14 @@ class Database:
             self.conn.commit()
         except sqlite3.OperationalError:
             pass
+        # Migrate: add content column if missing
+        try:
+            self.conn.execute(
+                "ALTER TABLE news_items ADD COLUMN content TEXT DEFAULT NULL"
+            )
+            self.conn.commit()
+        except sqlite3.OperationalError:
+            pass
         # Add index on processed_at for fast "last 24 hours" queries
         self.conn.execute(SCHEMA_PROCESSED_AT_INDEX)
         self.conn.commit()
@@ -119,14 +127,15 @@ class Database:
     def insert(self, item: ProcessedNewsItem) -> int:
         cursor = self.conn.execute(
             """INSERT OR IGNORE INTO news_items
-               (title, url, source, published, summary, score, score_reasoning, learning_objectives, category, fetched_via, processed_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               (title, url, source, published, summary, content, score, score_reasoning, learning_objectives, category, fetched_via, processed_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 item.title,
                 item.url,
                 item.source,
                 item.published.isoformat() if item.published else None,
                 item.summary,
+                item.content,
                 item.score,
                 item.score_reasoning,
                 item.learning_objectives,
@@ -456,6 +465,10 @@ class Database:
             lo_generated_with_opus = bool(row["lo_generated_with_opus"])
         except (IndexError, KeyError):
             lo_generated_with_opus = False
+        try:
+            content = row["content"]
+        except (IndexError, KeyError):
+            content = None
         return ProcessedNewsItem(
             id=row["id"],
             title=row["title"],
@@ -463,6 +476,7 @@ class Database:
             source=row["source"],
             published=published,
             summary=row["summary"] or "",
+            content=content,
             score=row["score"],
             score_reasoning=row["score_reasoning"] or "",
             learning_objectives=learning_objectives,

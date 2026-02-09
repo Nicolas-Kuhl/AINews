@@ -289,6 +289,11 @@ def _render_item_details(primary, related, db, cfg):
         st.markdown(primary.score_reasoning)
         st.markdown("")
 
+    # Article content (collapsible)
+    if primary.content:
+        with st.expander("Article Content", expanded=False):
+            st.markdown(primary.content)
+
     # Learning objectives
     st.markdown('<span class="section-pill">Learning Objectives</span>', unsafe_allow_html=True)
     _render_learning_objectives(primary, cfg, db)
@@ -578,6 +583,47 @@ def _render_settings_tab(cfg, db, project_root):
     if semantic_enabled != cfg.get("semantic_dedup", True):
         cfg["semantic_dedup"] = semantic_enabled
         _save_config_dedup(cfg)
+
+    st.divider()
+
+    # Content Fetching Settings
+    st.subheader("Content Fetching")
+    st.caption("Fetch full article text from URLs to improve scoring accuracy and summaries.")
+
+    content_enabled = st.toggle(
+        "Enable content fetching",
+        value=cfg.get("content_fetching", True),
+        help="When enabled, full article text is fetched after dedup and included in Claude's scoring context.",
+        key="content_fetching_toggle",
+    )
+    if content_enabled != cfg.get("content_fetching", True):
+        cfg["content_fetching"] = content_enabled
+        save_config(cfg)
+
+    cf_col1, cf_col2 = st.columns(2)
+    with cf_col1:
+        new_max_store = st.number_input(
+            "Max content stored (chars)",
+            min_value=1000, max_value=50000,
+            value=cfg.get("content_max_chars", 10000),
+            help="Maximum characters of article content stored in the database.",
+            key="content_max_chars_input",
+        )
+        if new_max_store != cfg.get("content_max_chars", 10000):
+            cfg["content_max_chars"] = int(new_max_store)
+            save_config(cfg)
+
+    with cf_col2:
+        new_max_score = st.number_input(
+            "Max content for scoring (chars)",
+            min_value=500, max_value=10000,
+            value=cfg.get("content_score_chars", 3000),
+            help="Maximum characters sent to Claude for scoring. Higher = better context but more cost.",
+            key="content_score_chars_input",
+        )
+        if new_max_score != cfg.get("content_score_chars", 3000):
+            cfg["content_score_chars"] = int(new_max_score)
+            save_config(cfg)
 
     st.divider()
 
