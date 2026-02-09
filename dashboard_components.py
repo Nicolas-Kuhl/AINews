@@ -630,13 +630,36 @@ def _render_settings_tab(cfg, db, project_root):
     # Smart Grouper
     st.subheader("Smart Grouper")
     st.caption("Re-analyze all items and group related news coverage together.")
-    if st.button("Run Smart Grouper", key="run_grouper", type="primary"):
-        from ainews.processing.grouper import run_grouper
+    grouper_col1, grouper_col2 = st.columns(2)
+    with grouper_col1:
+        if st.button("Run Smart Grouper", key="run_grouper", type="primary"):
+            from ainews.processing.grouper import run_grouper
 
-        with st.spinner("Grouping items..."):
-            count = run_grouper(db)
-        st.success(f"Done — created {count} groups.")
-        st.rerun()
+            with st.spinner("Grouping items..."):
+                count = run_grouper(db)
+            st.success(f"Done — created {count} groups.")
+            st.rerun()
+
+    with grouper_col2:
+        if st.button("Deep Semantic Dedup", key="run_deep_dedup"):
+            from ainews.processing.grouper import deep_semantic_dedup
+
+            api_key = cfg.get("anthropic_api_key", "")
+            if not api_key:
+                st.error("No Anthropic API key configured.")
+            else:
+                client = anthropic.Anthropic(api_key=api_key)
+                model = cfg.get("model", "claude-sonnet-4-5-20250929")
+                with st.spinner("Scanning all items for semantic duplicates with Claude..."):
+                    count = deep_semantic_dedup(db, client, model)
+                if count > 0:
+                    st.success(f"Found and grouped {count} duplicate pair{'s' if count != 1 else ''}. Vendor sources preferred as primary.")
+                else:
+                    st.info("No additional duplicates found.")
+                st.cache_data.clear()
+                st.rerun()
+
+    st.caption("**Smart Grouper** uses fuzzy title matching. **Deep Semantic Dedup** uses Claude to find duplicates that fuzzy matching misses, grouping them with vendor sources as primary.")
 
     st.divider()
 

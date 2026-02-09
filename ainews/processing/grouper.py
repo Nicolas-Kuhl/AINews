@@ -1,11 +1,16 @@
 """Group similar news items by fuzzy title matching."""
 
+import json
+import logging
 import re
 from urllib.parse import urlparse
 
+import anthropic
 from rapidfuzz import fuzz
 
 from ainews.storage.database import Database
+
+logger = logging.getLogger(__name__)
 
 VENDOR_DOMAINS = {
     "openai.com", "anthropic.com", "deepmind.google", "deepmind.com",
@@ -87,3 +92,179 @@ def run_grouper(db: Database, threshold: int = 60) -> int:
 
     db.commit()
     return group_count
+
+
+def deep_semantic_dedup(
+    db: Database,
+    client: anthropic.Anthropic,
+    model: str,
+    fuzzy_low: int = 30,
+    fuzzy_high: int = 70,
+    batch_size: int = 30,
+) -> int:
+    """Scan all DB items for semantic duplicates using Claude.
+
+    Finds pairs of items with borderline fuzzy similarity (between fuzzy_low
+    and fuzzy_high) that share at least one significant keyword, then asks
+    Claude to confirm whether they're the same story. Confirmed pairs are
+    grouped together, with vendor-sourced items preferred as primary.
+
+    Args:
+        db: Database instance.
+        client: Anthropic API client.
+        model: Model ID for Claude.
+        fuzzy_low: Minimum fuzzy score to consider a pair.
+        fuzzy_high: Maximum fuzzy score (above this, run_grouper already catches them).
+        batch_size: Max pairs to send to Claude per API call.
+
+    Returns:
+        Number of new groupings created.
+    """
+    items = db.get_all_items_minimal()
+    if len(items) < 2:
+        return 0
+
+    # Build candidate pairs: share keywords + borderline fuzzy score
+    candidates: list[tuple[dict, dict]] = []
+    for i in range(len(items)):
+        title_i = items[i]["title"].lower().strip()
+        words_i = _significant_words(title_i)
+        if not words_i:
+            continue
+        for j in range(i + 1, len(items)):
+            title_j = items[j]["title"].lower().strip()
+            words_j = _significant_words(title_j)
+            # Must share at least one significant word
+            if not words_i & words_j:
+                continue
+            score = fuzz.token_set_ratio(title_i, title_j)
+            if fuzzy_low <= score <= fuzzy_high:
+                candidates.append((items[i], items[j]))
+
+    if not candidates:
+        logger.info("  Deep semantic dedup: no borderline candidates found.")
+        return 0
+
+    logger.info(f"  Deep semantic dedup: {len(candidates)} candidate pairs to review.")
+
+    # Send to Claude in batches
+    confirmed_pairs: list[tuple[str, str]] = []
+    for batch_start in range(0, len(candidates), batch_size):
+        batch = candidates[batch_start:batch_start + batch_size]
+        pairs_text = "\n".join(
+            f'{i+1}. A: "{a["title"]}"\n   B: "{b["title"]}"'
+            for i, (a, b) in enumerate(batch)
+        )
+
+        try:
+            response = client.messages.create(
+                model=model,
+                max_tokens=1024,
+                messages=[{
+                    "role": "user",
+                    "content": f"""You are a news deduplication assistant. For each pair below, determine if headline A is about the same specific news story/event as headline B.
+
+Answer ONLY with a JSON array of pair numbers that ARE about the same story. If none match, return an empty array [].
+
+Be strict: two articles must be about the same specific event or announcement to count. Articles about the same general topic but different events are NOT the same story.
+
+{pairs_text}
+
+Return ONLY a JSON array, e.g. [1, 3] or []. No other text.""",
+                }],
+            )
+
+            response_text = response.content[0].text.strip()
+            match_indices = json.loads(response_text)
+            if not isinstance(match_indices, list):
+                match_indices = []
+        except Exception as e:
+            logger.warning(f"  Deep semantic dedup batch error: {e}")
+            continue
+
+        for idx in match_indices:
+            if 1 <= idx <= len(batch):
+                a, b = batch[idx - 1]
+                confirmed_pairs.append((a["title"], b["title"]))
+
+    if not confirmed_pairs:
+        logger.info("  Deep semantic dedup: Claude found no same-story pairs.")
+        return 0
+
+    logger.info(f"  Deep semantic dedup: Claude confirmed {len(confirmed_pairs)} same-story pairs.")
+
+    # Group confirmed pairs, preferring vendor URLs as primary
+    grouped = 0
+    max_row = db.conn.execute("SELECT COALESCE(MAX(group_id), 0) FROM news_items").fetchone()
+    next_group_id = (max_row[0] or 0) + 1
+
+    for title_a, title_b in confirmed_pairs:
+        row_a = db.conn.execute(
+            "SELECT id, group_id, url FROM news_items WHERE LOWER(title) = ?",
+            (title_a.lower().strip(),),
+        ).fetchone()
+        row_b = db.conn.execute(
+            "SELECT id, group_id, url FROM news_items WHERE LOWER(title) = ?",
+            (title_b.lower().strip(),),
+        ).fetchone()
+
+        if not row_a or not row_b or row_a["id"] == row_b["id"]:
+            continue
+
+        # Already in the same group
+        if row_a["group_id"] and row_a["group_id"] == row_b["group_id"]:
+            continue
+
+        # Pick a group_id: use existing if one has it, otherwise assign new
+        if row_a["group_id"]:
+            gid = row_a["group_id"]
+        elif row_b["group_id"]:
+            gid = row_b["group_id"]
+        else:
+            gid = next_group_id
+            next_group_id += 1
+
+        # Assign both to the group
+        db.conn.execute("UPDATE news_items SET group_id = ? WHERE id = ?", (gid, row_a["id"]))
+        db.conn.execute("UPDATE news_items SET group_id = ? WHERE id = ?", (gid, row_b["id"]))
+
+        # Ensure vendor item is primary by giving it a slightly higher score
+        # within the group (query_grouped sorts by score DESC)
+        a_vendor = _is_vendor_url(row_a["url"])
+        b_vendor = _is_vendor_url(row_b["url"])
+        if b_vendor and not a_vendor:
+            # Swap scores if vendor item has lower score
+            scores = db.conn.execute(
+                "SELECT id, score FROM news_items WHERE id IN (?, ?)",
+                (row_a["id"], row_b["id"]),
+            ).fetchall()
+            score_map = {r["id"]: r["score"] for r in scores}
+            if score_map.get(row_b["id"], 0) < score_map.get(row_a["id"], 0):
+                db.conn.execute(
+                    "UPDATE news_items SET score = ? WHERE id = ?",
+                    (score_map[row_a["id"]], row_b["id"]),
+                )
+                db.conn.execute(
+                    "UPDATE news_items SET score = ? WHERE id = ?",
+                    (score_map[row_b["id"]], row_a["id"]),
+                )
+        elif a_vendor and not b_vendor:
+            scores = db.conn.execute(
+                "SELECT id, score FROM news_items WHERE id IN (?, ?)",
+                (row_a["id"], row_b["id"]),
+            ).fetchall()
+            score_map = {r["id"]: r["score"] for r in scores}
+            if score_map.get(row_a["id"], 0) < score_map.get(row_b["id"], 0):
+                db.conn.execute(
+                    "UPDATE news_items SET score = ? WHERE id = ?",
+                    (score_map[row_b["id"]], row_a["id"]),
+                )
+                db.conn.execute(
+                    "UPDATE news_items SET score = ? WHERE id = ?",
+                    (score_map[row_a["id"]], row_b["id"]),
+                )
+
+        grouped += 1
+
+    db.conn.commit()
+    return grouped
