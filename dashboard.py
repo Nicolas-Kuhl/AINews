@@ -2,7 +2,7 @@
 """AI News Aggregator — Streamlit Dashboard (Rebuilt with best practices)."""
 
 import streamlit as st
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import yaml
 
@@ -129,21 +129,24 @@ def main():
     # Run status bar (cached)
     run_stats = get_last_run_stats(cfg["db_path"])
     if run_stats:
-        from datetime import datetime
         try:
-            # Parse ISO timestamp and format it nicely
             timestamp_iso = run_stats['last_run']
             dt = datetime.fromisoformat(timestamp_iso)
-            # Format as "YYYY-MM-DD HH:MM:SS UTC"
             formatted_time = dt.strftime('%Y-%m-%d %H:%M:%S UTC')
         except Exception:
             formatted_time = run_stats['last_run']
 
         st.markdown(
-            f"**Last run:** {formatted_time} · **Items added in last 24 hours:** {run_stats['items_added']}"
+            f'<div class="status-bar">'
+            f'<span class="status-dot"></span>'
+            f'<span>Last run: <strong>{formatted_time}</strong></span>'
+            f'<span>·</span>'
+            f'<span>Items added (24h): <strong>{run_stats["items_added"]}</strong></span>'
+            f'</div>',
+            unsafe_allow_html=True,
         )
     else:
-        st.info("No data yet — run the fetch pipeline to get started.")
+        st.info("No data yet — run the fetch pipeline from the Settings tab to get started.")
 
     # Sidebar filters
     with st.sidebar:
@@ -151,10 +154,10 @@ def main():
 
         score_range = st.slider("Score range", 1, 10, (1, 10))
 
-        default_start = datetime.utcnow() - timedelta(days=30)
+        default_start = datetime.now(timezone.utc) - timedelta(days=30)
         date_range = st.date_input(
             "Date range",
-            value=(default_start.date(), datetime.utcnow().date()),
+            value=(default_start.date(), datetime.now(timezone.utc).date()),
         )
 
         show_acknowledged = st.checkbox("Show acknowledged items", value=False)
