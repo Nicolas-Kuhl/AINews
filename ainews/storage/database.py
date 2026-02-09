@@ -134,6 +134,15 @@ class Database:
         )
         self.conn.commit()
 
+    def acknowledge_before_date(self, before_date) -> int:
+        """Acknowledge all unacknowledged items processed before the given date."""
+        cursor = self.conn.execute(
+            "UPDATE news_items SET acknowledged = 1 WHERE acknowledged = 0 AND processed_at < ?",
+            (before_date.isoformat(),),
+        )
+        self.conn.commit()
+        return cursor.rowcount
+
     def update_learning_objectives(self, item_id: int, objectives: str, generated_with_opus: bool = False):
         self.conn.execute(
             "UPDATE news_items SET learning_objectives = ?, lo_generated_with_opus = ? WHERE id = ?",

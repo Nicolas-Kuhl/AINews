@@ -549,6 +549,22 @@ def _render_settings_tab(cfg, db, project_root):
 
     st.divider()
 
+    # Bulk Acknowledge
+    st.subheader("Bulk Acknowledge")
+    st.caption("Acknowledge all news items processed before a specific date.")
+    ack_date = st.date_input("Acknowledge items older than", key="bulk_ack_date")
+    if st.button("Acknowledge All Before Date", key="bulk_ack_btn", type="primary"):
+        from datetime import datetime, time
+        cutoff = datetime.combine(ack_date, time.min)
+        count = db.acknowledge_before_date(cutoff)
+        st.cache_data.clear()
+        if count > 0:
+            st.success(f"Acknowledged {count} item{'s' if count != 1 else ''}.")
+        else:
+            st.info("No unacknowledged items found before that date.")
+
+    st.divider()
+
     # Sources Management
     feeds = cfg.get("feeds", [])
     rss_feeds = [(i, f) for i, f in enumerate(feeds) if f.get("type", "auto") in ("rss", "auto")]
