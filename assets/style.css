@@ -216,6 +216,27 @@ hr {
     font-size: 0.8rem !important;
 }
 
+/* Pill-sized primary buttons (Generate with Opus).
+   A hidden marker div is placed before the button; the adjacent-sibling
+   combinator targets the next element-container's button. */
+.pill-btn-next {
+    display: none;
+}
+
+div:has(> .stMarkdown .pill-btn-next) + div .stButton > button[kind="primary"],
+div:has(> .stMarkdown .pill-btn-next) + div .stButton > button[kind="primary"]:focus {
+    font-size: 0.7rem !important;
+    padding: 0.25rem 0.75rem !important;
+    border-radius: 12px !important;
+    letter-spacing: 0.08em;
+}
+
+div:has(> .stMarkdown .pill-btn-next) + div .stButton > button[kind="primary"] p,
+div:has(> .stMarkdown .pill-btn-next) + div .stButton > button[kind="primary"] span,
+div:has(> .stMarkdown .pill-btn-next) + div .stButton > button[kind="primary"] div {
+    font-size: 0.7rem !important;
+}
+
 /* ---- Expander (Detail Panels) ---- */
 [data-testid="stExpander"] {
     border-left: 3px solid var(--accent-pink);

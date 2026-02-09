@@ -333,6 +333,8 @@ def _render_learning_objectives(primary, cfg, db):
 
     # Generate button
     if not is_generating and not primary.lo_generated_with_opus:
+        # Invisible marker so CSS can target the next sibling's button as pill-sized
+        st.markdown('<div class="pill-btn-next"></div>', unsafe_allow_html=True)
         if st.button("Generate with Opus", key=f"gen_btn_{primary.id}", type="primary"):
             st.session_state[lo_gen_key] = True
             st.rerun(scope="fragment")
