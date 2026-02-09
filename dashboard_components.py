@@ -172,12 +172,17 @@ def generate_learning_objectives(cfg: dict, item):
     return text_content.strip()
 
 
+@st.fragment
 def _render_news_list(grouped_items, db, cfg):
-    """Render list of grouped news items as a compact table."""
-    # Table header (using container without HTML div wrapper)
+    """Render list of grouped news items as a compact table.
+
+    Decorated with @st.fragment so that expand/collapse and acknowledge
+    clicks only rerun this fragment, not the entire page.
+    """
+    # Table header
     with st.container():
         h_cols = st.columns([0.5, 0.6, 5.3, 1.8, 1.2, 0.9])
-        h_cols[0].markdown("")  # Expand arrow column (wider for spacing)
+        h_cols[0].markdown("")  # Expand arrow column
         h_cols[1].markdown("**Score**")
         h_cols[2].markdown("**Title**")
         h_cols[3].markdown("**Source**")
@@ -214,7 +219,7 @@ def _render_news_item(primary, related, db, cfg):
             arrow = "▾" if is_expanded else "▸"
             if st.button(arrow, key=f"toggle_{primary.id}"):
                 st.session_state[expand_key] = not is_expanded
-                st.rerun()
+                st.rerun(scope="fragment")
 
         # Score pill with color coding
         if primary.score >= 8:
@@ -253,7 +258,7 @@ def _render_news_item(primary, related, db, cfg):
                 if st.button("Ack", key=f"ack_{primary.id}", type="primary"):
                     st.session_state[ack_pending_key] = True
                     st.cache_data.clear()
-                    st.rerun()
+                    st.rerun(scope="fragment")
             else:
                 st.markdown("✅")
 
@@ -330,7 +335,7 @@ def _render_learning_objectives(primary, cfg, db):
     if not is_generating and not primary.lo_generated_with_opus:
         if st.button("Generate with Opus", key=f"gen_btn_{primary.id}", type="primary"):
             st.session_state[lo_gen_key] = True
-            st.rerun()
+            st.rerun(scope="fragment")
 
     # Show error if any
     prev_err = st.session_state.get(lo_err_key)
@@ -350,7 +355,7 @@ def _render_learning_objectives(primary, cfg, db):
             except Exception as e:
                 st.session_state[lo_err_key] = f"Generation failed: {e}"
         st.session_state[lo_gen_key] = False
-        st.rerun()
+        st.rerun(scope="fragment")
     else:
         if primary.learning_objectives:
             st.markdown(primary.learning_objectives)
