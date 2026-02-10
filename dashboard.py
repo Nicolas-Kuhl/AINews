@@ -113,7 +113,7 @@ def check_authentication():
 
 
 def main():
-    st.set_page_config(page_title="AI News Aggregator", page_icon="📡", layout="wide")
+    st.set_page_config(page_title="AINews", page_icon="📡", layout="wide")
 
     # Check authentication
     check_authentication()
@@ -126,27 +126,50 @@ def main():
     cfg = load_config()
     db = Database(cfg["db_path"])
 
-    # Run status bar (cached)
+    # Run status bar (cached, with relative timestamp)
     run_stats = get_last_run_stats(cfg["db_path"])
     if run_stats:
         try:
             timestamp_iso = run_stats['last_run']
             dt = datetime.fromisoformat(timestamp_iso)
-            formatted_time = dt.strftime('%Y-%m-%d %H:%M:%S UTC')
+            # Relative time
+            now = datetime.now(timezone.utc)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            delta = now - dt
+            if delta.total_seconds() < 60:
+                relative_time = "just now"
+            elif delta.total_seconds() < 3600:
+                mins = int(delta.total_seconds() // 60)
+                relative_time = f"{mins} minute{'s' if mins != 1 else ''} ago"
+            elif delta.total_seconds() < 86400:
+                hours = int(delta.total_seconds() // 3600)
+                relative_time = f"{hours} hour{'s' if hours != 1 else ''} ago"
+            else:
+                days = int(delta.total_seconds() // 86400)
+                relative_time = f"{days} day{'s' if days != 1 else ''} ago"
         except Exception:
-            formatted_time = run_stats['last_run']
+            relative_time = run_stats['last_run']
 
         st.markdown(
             f'<div class="status-bar">'
             f'<span class="status-dot"></span>'
-            f'<span>Last run: <strong>{formatted_time}</strong></span>'
+            f'<span>Last run: <strong>{relative_time}</strong></span>'
             f'<span>·</span>'
-            f'<span>Items added (24h): <strong>{run_stats["items_added"]}</strong></span>'
+            f'<span>24h: <strong>{run_stats["items_added"]} items</strong></span>'
             f'</div>',
             unsafe_allow_html=True,
         )
     else:
-        st.info("No data yet — run the fetch pipeline from the Settings tab to get started.")
+        # Empty state with personality
+        st.markdown(
+            '<div class="empty-state">'
+            '<div class="empty-state-icon">📡</div>'
+            '<div class="empty-state-text">No data yet — run the fetch pipeline from the Settings tab to get started.</div>'
+            '<div class="empty-state-hint">Settings → Pipeline → Run Pipeline</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
 
     # Sidebar filters
     with st.sidebar:
@@ -198,7 +221,14 @@ def main():
             grouped = filter_grouped_items(grouped, search_query)
             st.subheader(f"{category} ({len(grouped)})")
             if not grouped:
-                st.info(f"No {category.lower()} items found matching your filters.")
+                st.markdown(
+                    '<div class="empty-state">'
+                    '<div class="empty-state-icon">◇</div>'
+                    f'<div class="empty-state-text">No {category.lower()} stories matched your filters.</div>'
+                    '<div class="empty-state-hint">Try widening your score range or date window</div>'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
             else:
                 _render_news_list(grouped, cfg["db_path"], cfg)
 

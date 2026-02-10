@@ -187,15 +187,15 @@ def _render_news_list(grouped_items, db_path, cfg):
 
     db = Database(db_path)
 
-    # Table header
+    # Table header (monospace labels via CSS class)
     with st.container():
         h_cols = st.columns([0.5, 0.6, 5.3, 1.8, 1.2, 0.9])
         h_cols[0].markdown("")  # Expand arrow column
-        h_cols[1].markdown("**Score**")
-        h_cols[2].markdown("**Title**")
-        h_cols[3].markdown("**Source**")
-        h_cols[4].markdown("**Date**")
-        h_cols[5].markdown("**Action**")
+        h_cols[1].markdown('<span class="date-mono" style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.12em;">Score</span>', unsafe_allow_html=True)
+        h_cols[2].markdown('<span class="date-mono" style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.12em;">Title</span>', unsafe_allow_html=True)
+        h_cols[3].markdown('<span class="date-mono" style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.12em;">Source</span>', unsafe_allow_html=True)
+        h_cols[4].markdown('<span class="date-mono" style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.12em;">Date</span>', unsafe_allow_html=True)
+        h_cols[5].markdown("")
 
     # Render each news item
     for primary, related in grouped_items:
@@ -229,36 +229,42 @@ def _render_news_item(primary, related, db, cfg):
                 st.session_state[expand_key] = not is_expanded
                 st.rerun(scope="fragment")
 
-        # Score pill with color coding
+        # Score pill with color coding (using CSS classes for harmonised palette)
         if primary.score >= 8:
-            pill_color = "#d32f2f"
+            score_class = "high"
+            score_icon = "&#9650;"  # ▲
         elif primary.score >= 5:
-            pill_color = "#f39c12"
+            score_class = "mid"
+            score_icon = "&#9679;"  # ●
         else:
-            pill_color = "#6b7280"
+            score_class = "low"
+            score_icon = "&#9660;"  # ▼
 
         cols[1].markdown(
-            f'<span style="background-color:{pill_color};color:#ffffff;padding:0.25rem 0.65rem;'
-            f'border-radius:12px;font-weight:700;font-size:0.85rem;display:inline-block;'
-            f'text-align:center;min-width:2rem;">{primary.score}</span>',
+            f'<span class="score-pill {score_class}">'
+            f'<span style="font-size:0.55rem;margin-right:0.2rem;">{score_icon}</span>'
+            f'{primary.score}</span>',
             unsafe_allow_html=True
         )
 
-        # Title as clickable link with related count
-        title_text = f"[{primary.title}]({primary.url})"
+        # Title as clickable link with related count badge
+        title_md = f"[{primary.title}]({primary.url})"
         if related:
-            title_text += f" `+{len(related)}`"
-        cols[2].markdown(title_text)
+            title_md += f' <span class="related-count">+{len(related)}</span>'
+        cols[2].markdown(title_md, unsafe_allow_html=True)
 
         # Source
         cols[3].caption(primary.source)
 
-        # Date (with time)
+        # Date (monospace for alignment)
         if primary.published:
             date_str = primary.published.strftime("%b %d %H:%M")
         else:
             date_str = "—"
-        cols[4].caption(date_str)
+        cols[4].markdown(
+            f'<span class="date-mono">{date_str}</span>',
+            unsafe_allow_html=True
+        )
 
         # Acknowledge button
         with cols[5]:
@@ -270,9 +276,11 @@ def _render_news_item(primary, related, db, cfg):
             else:
                 st.markdown("✅")
 
-    # Expandable details (only shown when expanded)
+    # Expandable details (animated slide-in when expanded)
     if is_expanded:
+        st.markdown('<div class="detail-enter">', unsafe_allow_html=True)
         _render_item_details(primary, related, db, cfg)
+        st.markdown('</div>', unsafe_allow_html=True)
 
 
 def _render_item_details(primary, related, db, cfg):
@@ -293,7 +301,7 @@ def _render_item_details(primary, related, db, cfg):
     st.markdown('<span class="section-pill">Learning Objectives</span>', unsafe_allow_html=True)
     _render_learning_objectives(primary, cfg, db)
 
-    # All sources (when grouped)
+    # All sources (when grouped) — harmonised score badges
     if related:
         all_items = [primary] + related
         st.markdown(f'<span class="section-pill">All Sources ({len(all_items)})</span>', unsafe_allow_html=True)
@@ -301,26 +309,32 @@ def _render_item_details(primary, related, db, cfg):
             date_str = item.published.strftime("%b %d %H:%M") if item.published else "—"
 
             if item.score >= 8:
-                score_badge = f'<span style="background-color:#d32f2f;color:#fff;padding:0.1rem 0.4rem;border-radius:6px;font-size:0.7rem;font-weight:700;">{item.score}</span>'
+                score_class = "high"
             elif item.score >= 5:
-                score_badge = f'<span style="background-color:#f39c12;color:#fff;padding:0.1rem 0.4rem;border-radius:6px;font-size:0.7rem;font-weight:700;">{item.score}</span>'
+                score_class = "mid"
             else:
-                score_badge = f'<span style="background-color:#6b7280;color:#fff;padding:0.1rem 0.4rem;border-radius:6px;font-size:0.7rem;font-weight:700;">{item.score}</span>'
+                score_class = "low"
+            score_badge = f'<span class="score-badge-sm {score_class}">{item.score}</span>'
 
             st.markdown(
-                f"{idx}. [{item.title}]({item.url}) · **{item.source}** · {date_str} · {score_badge}",
+                f'{idx}. [{item.title}]({item.url}) · **{item.source}** · '
+                f'<span class="date-mono">{date_str}</span> · {score_badge}',
                 unsafe_allow_html=True
             )
         st.markdown("")
 
-    # Metadata footer
+    # Metadata footer with monospace dates
     st.markdown("---")
     col1, col2, col3 = st.columns(3)
     col1.caption(f"**Category:** {primary.category}")
     col2.caption(f"**Fetched via:** {primary.fetched_via}")
     if primary.published:
         date_str = primary.published.strftime('%Y-%m-%d %H:%M')
-        col3.caption(f"**Published:** {date_str} UTC")
+        col3.markdown(
+            f'<span style="font-size:0.75rem;color:#b0b5d4;opacity:0.9;">'
+            f'<strong>Published:</strong> <span class="date-mono">{date_str} UTC</span></span>',
+            unsafe_allow_html=True
+        )
 
     # Article content (collapsible, at the bottom)
     if primary.content:
@@ -334,10 +348,10 @@ def _render_learning_objectives(primary, cfg, db):
     lo_err_key = f"gen_lo_err_{primary.id}"
     is_generating = st.session_state.get(lo_gen_key, False)
 
-    # Show badge if generated with Opus
+    # Show badge if generated with Opus (monospace via CSS class)
     if primary.lo_generated_with_opus and not is_generating:
         st.markdown(
-            '<span class="opus-badge">&#9679; Generated with Claude Opus 4.6</span>',
+            '<span class="opus-badge">&#9679; Generated with Claude Opus</span>',
             unsafe_allow_html=True,
         )
         st.markdown("")
@@ -377,10 +391,30 @@ def _render_learning_objectives(primary, cfg, db):
 
 
 def _render_settings_tab(cfg, db, project_root):
-    """Render the Settings tab."""
+    """Render the Settings tab with grouped sections."""
+    # Settings mini-navigation
+    st.markdown(
+        '<div class="settings-nav">'
+        '<span class="settings-nav-item">Pipeline</span>'
+        '<span class="settings-nav-item">Scoring & Prompts</span>'
+        '<span class="settings-nav-item">Sources</span>'
+        '<span class="settings-nav-item">Maintenance</span>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    # ═══════════════════════════════════════════════════
+    #  GROUP 1: PIPELINE
+    # ═══════════════════════════════════════════════════
+    st.markdown(
+        '<div class="settings-group-header">Pipeline</div>'
+        '<div class="settings-group-desc">Run the fetch pipeline and generate RSS feeds.</div>',
+        unsafe_allow_html=True,
+    )
+
     # RSS Feed Generator
-    st.subheader("RSS Feed")
-    st.caption("Generate an RSS feed of high-priority news items (score 8+) for your RSS reader.")
+    st.markdown("#### RSS Feed")
+    st.caption("Generate an RSS feed of high-priority news items for your RSS reader.")
 
     rss_col1, rss_col2 = st.columns([3, 1])
     with rss_col1:
@@ -425,10 +459,10 @@ def _render_settings_tab(cfg, db, project_root):
         )
         st.caption("💡 Save this file and add it to your RSS reader, or host it on a web server for automatic updates.")
 
-    st.divider()
+    st.markdown('<hr class="settings-divider">', unsafe_allow_html=True)
 
     # Pipeline Runner
-    st.subheader("Fetch Pipeline")
+    st.markdown("#### Fetch Pipeline")
     st.caption("Run the full pipeline: fetch RSS & search, deduplicate, score with Claude, group, and generate RSS feed.")
 
     log_file = project_root / "data" / "pipeline.log"
@@ -460,10 +494,19 @@ def _render_settings_tab(cfg, db, project_root):
         with st.expander("Pipeline Log", expanded=False):
             st.code(log_file.read_text())
 
-    st.divider()
+    st.markdown('<hr class="settings-divider">', unsafe_allow_html=True)
+
+    # ═══════════════════════════════════════════════════
+    #  GROUP 2: SCORING & PROMPTS
+    # ═══════════════════════════════════════════════════
+    st.markdown(
+        '<div class="settings-group-header">Scoring &amp; Prompts</div>'
+        '<div class="settings-group-desc">Configure how Claude scores items and generates learning objectives.</div>',
+        unsafe_allow_html=True,
+    )
 
     # Scoring Settings
-    st.subheader("Scoring Settings")
+    st.markdown("#### Scoring Settings")
     from ainews.config import save_config
 
     new_batch_size = st.number_input(
@@ -505,7 +548,7 @@ def _render_settings_tab(cfg, db, project_root):
                 save_config(cfg)
                 st.rerun()
 
-    st.divider()
+    st.markdown('<hr class="settings-divider">', unsafe_allow_html=True)
 
     # Learning Objectives Prompt
     current_lo_prompt = cfg.get("lo_prompt") or DEFAULT_LO_PROMPT
@@ -538,10 +581,10 @@ def _render_settings_tab(cfg, db, project_root):
                 save_config(cfg)
                 st.rerun()
 
-    st.divider()
+    st.markdown('<hr class="settings-divider">', unsafe_allow_html=True)
 
     # Deduplication Settings
-    st.subheader("Deduplication")
+    st.markdown("#### Deduplication")
     st.caption("Control how the pipeline detects and removes duplicate news items.")
     from ainews.config import save_config as _save_config_dedup
 
@@ -582,10 +625,10 @@ def _render_settings_tab(cfg, db, project_root):
         cfg["semantic_dedup"] = semantic_enabled
         _save_config_dedup(cfg)
 
-    st.divider()
+    st.markdown('<hr class="settings-divider">', unsafe_allow_html=True)
 
     # Content Fetching Settings
-    st.subheader("Content Fetching")
+    st.markdown("#### Content Fetching")
     st.caption("Fetch full article text from URLs to improve scoring accuracy and summaries.")
 
     content_enabled = st.toggle(
@@ -623,10 +666,19 @@ def _render_settings_tab(cfg, db, project_root):
             cfg["content_score_chars"] = int(new_max_score)
             save_config(cfg)
 
-    st.divider()
+    st.markdown('<hr class="settings-divider">', unsafe_allow_html=True)
+
+    # ═══════════════════════════════════════════════════
+    #  GROUP 3: MAINTENANCE
+    # ═══════════════════════════════════════════════════
+    st.markdown(
+        '<div class="settings-group-header">Maintenance</div>'
+        '<div class="settings-group-desc">Grouping, deduplication, and bulk operations.</div>',
+        unsafe_allow_html=True,
+    )
 
     # Smart Grouper
-    st.subheader("Smart Grouper")
+    st.markdown("#### Smart Grouper")
     st.caption("Re-analyze all items and group related news coverage together.")
     grouper_col1, grouper_col2 = st.columns(2)
     with grouper_col1:
@@ -659,10 +711,10 @@ def _render_settings_tab(cfg, db, project_root):
 
     st.caption("**Smart Grouper** uses fuzzy title matching. **Deep Semantic Dedup** uses Claude to find duplicates that fuzzy matching misses, grouping them with vendor sources as primary.")
 
-    st.divider()
+    st.markdown('<hr class="settings-divider">', unsafe_allow_html=True)
 
     # Bulk Acknowledge
-    st.subheader("Bulk Acknowledge")
+    st.markdown("#### Bulk Acknowledge")
     col_date, col_score = st.columns(2)
     with col_date:
         st.caption("Acknowledge all items published before a specific date.")
@@ -687,7 +739,16 @@ def _render_settings_tab(cfg, db, project_root):
             else:
                 st.info(f"No unacknowledged items found with score below {ack_score}.")
 
-    st.divider()
+    st.markdown('<hr class="settings-divider">', unsafe_allow_html=True)
+
+    # ═══════════════════════════════════════════════════
+    #  GROUP 4: SOURCES
+    # ═══════════════════════════════════════════════════
+    st.markdown(
+        '<div class="settings-group-header">Sources</div>'
+        '<div class="settings-group-desc">Manage RSS feeds, websites, and search queries.</div>',
+        unsafe_allow_html=True,
+    )
 
     # Sources Management
     feeds = cfg.get("feeds", [])
@@ -695,7 +756,7 @@ def _render_settings_tab(cfg, db, project_root):
     web_feeds = [(i, f) for i, f in enumerate(feeds) if f.get("type") == "web"]
 
     # RSS & Auto-Detect Feeds
-    st.subheader("RSS & Auto-Detect Feeds")
+    st.markdown("#### RSS & Auto-Detect Feeds")
     st.caption("Fetched via feedparser (rss) or httpx with auto-detection (auto). These use standard HTTP requests.")
 
     for idx, feed in rss_feeds:
@@ -744,10 +805,10 @@ def _render_settings_tab(cfg, db, project_root):
                     save_config(cfg)
                     st.rerun()
 
-    st.divider()
+    st.markdown('<hr class="settings-divider">', unsafe_allow_html=True)
 
     # Website Feeds (Browser Scraping)
-    st.subheader("Websites (Browser Scraping)")
+    st.markdown("#### Websites (Browser Scraping)")
     st.caption("Fetched via headless browser (Playwright) for JS-rendered pages that block simple HTTP requests.")
 
     for idx, feed in web_feeds:
@@ -794,10 +855,10 @@ def _render_settings_tab(cfg, db, project_root):
                     save_config(cfg)
                     st.rerun()
 
-    st.divider()
+    st.markdown('<hr class="settings-divider">', unsafe_allow_html=True)
 
     # Search Queries Management
-    st.subheader("Search Queries")
+    st.markdown("#### Search Queries")
     queries = cfg.get("search_queries", [])
     for i, q in enumerate(queries):
         col_q, col_rm = st.columns([9, 1])
@@ -820,10 +881,10 @@ def _render_settings_tab(cfg, db, project_root):
                     save_config(cfg)
                     st.rerun()
 
-    st.divider()
+    st.markdown('<hr class="settings-divider">', unsafe_allow_html=True)
 
     # Source Scan History
-    st.subheader("Source Scan History")
+    st.markdown("#### Source Scan History")
     source_status = db.get_source_status()
     if not source_status:
         st.info("No scan data yet. Run the fetch pipeline to populate.")

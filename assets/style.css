@@ -1,35 +1,70 @@
-/* AI News Aggregator - Pluralsight Theme for Streamlit */
+/* AI News Aggregator — Refined Dark Theme
+   Typography: Satoshi (body) · Newsreader (display) · JetBrains Mono (data)
+   Palette: Deep purple-black base · Vibrant pink accent · Harmonised score colors */
+
+/* ---- Fonts ---- */
+@import url('https://api.fontshare.com/v2/css?f[]=satoshi@300,400,500,600,700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,600;1,6..72,400&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
 /* ---- Color Variables ---- */
 :root {
-    --score-high: #d32f2f;
-    --score-mid: #f39c12;
-    --score-low: #6b7280;
+    /* Backgrounds */
     --bg-dark: #130f25;
     --bg-panel: #1e1a36;
     --bg-surface: #241f3d;
+
+    /* Accent */
     --accent-pink: #e7005e;
     --accent-pink-hover: #ff1675;
     --accent-pink-active: #c9004d;
+    --accent-pink-glow: rgba(231, 0, 94, 0.15);
+
+    /* Text */
     --text-primary: #ffffff;
     --text-secondary: #b0b5d4;
+    --text-muted: #5a5880;
+
+    /* Borders */
     --border-color: #383461;
     --border-subtle: rgba(165, 170, 207, 0.15);
+
+    /* Score colors — harmonised with palette */
+    --score-high: #ef4444;
+    --score-mid: #f59e0b;
+    --score-low: #6366f1;
+
+    /* Semantic */
+    --success: #10b981;
+    --error: #ef4444;
+    --info: #3b82f6;
+
+    /* Typography */
+    --font-body: 'Satoshi', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-display: 'Newsreader', Georgia, 'Times New Roman', serif;
+    --font-mono: 'JetBrains Mono', 'Consolas', 'Monaco', 'Courier New', monospace;
+
+    /* Spacing */
+    --row-padding-y: 0.85rem;
+    --row-padding-x: 1rem;
+    --row-gap: 1rem;
 }
 
 /* ---- Global Styles ---- */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-
-.stApp, [data-testid="stAppViewContainer"] {
+.stApp,
+[data-testid="stAppViewContainer"] {
     background-color: var(--bg-dark);
+    background-image:
+        radial-gradient(ellipse at 50% 0%, rgba(231, 0, 94, 0.03), transparent 65%),
+        radial-gradient(ellipse at 80% 80%, rgba(99, 102, 241, 0.02), transparent 50%);
     color: var(--text-primary);
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+    font-family: var(--font-body);
     font-weight: 400;
     line-height: 1.6;
 }
 
 /* ---- Sidebar ---- */
-[data-testid="stSidebar"], [data-testid="stSidebar"] > div {
+[data-testid="stSidebar"],
+[data-testid="stSidebar"] > div {
     background-color: var(--bg-panel);
     color: var(--text-primary);
 }
@@ -42,19 +77,28 @@
 
 [data-testid="stSidebar"] [data-testid="stWidgetLabel"] label {
     color: var(--text-secondary) !important;
+    font-family: var(--font-body);
+    font-size: 0.78rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
 }
 
 /* ---- Headers ---- */
 h1 {
     color: var(--text-primary) !important;
-    font-weight: 700;
-    letter-spacing: -0.02em;
+    font-family: var(--font-display) !important;
+    font-weight: 400 !important;
+    font-style: italic;
+    letter-spacing: -0.03em;
     margin-bottom: 0.5rem !important;
-    font-size: 2.25rem;
+    font-size: 2.75rem !important;
+    line-height: 1.1;
 }
 
 h2 {
     color: var(--text-primary) !important;
+    font-family: var(--font-body);
     font-weight: 600;
     letter-spacing: -0.01em;
     font-size: 1.5rem;
@@ -62,13 +106,23 @@ h2 {
 
 h3 {
     color: var(--text-primary) !important;
+    font-family: var(--font-mono);
     font-weight: 600;
-    font-size: 0.95rem;
+    font-size: 0.72rem;
     margin-top: 1.5rem !important;
     margin-bottom: 0.75rem !important;
-    letter-spacing: 0.01em;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
     opacity: 0.9;
+}
+
+h4 {
+    color: var(--text-primary) !important;
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 0.9rem;
+    margin-top: 1rem !important;
+    margin-bottom: 0.5rem !important;
 }
 
 /* ---- Links ---- */
@@ -83,7 +137,7 @@ a:hover {
     color: var(--accent-pink-hover) !important;
 }
 
-/* News title links - clean and simple */
+/* News title links */
 .news-table-row a {
     font-size: 0.95rem;
     line-height: 1.5;
@@ -93,16 +147,19 @@ a:hover {
 /* ---- Tabs ---- */
 [data-testid="stTabs"] button {
     color: var(--text-secondary) !important;
+    font-family: var(--font-body);
     font-weight: 500;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     border-bottom: 2px solid transparent;
     transition: color 0.15s ease, border-color 0.15s ease;
     padding: 0.75rem 1.25rem !important;
+    letter-spacing: 0.01em;
 }
 
 [data-testid="stTabs"] button[aria-selected="true"] {
     color: var(--accent-pink) !important;
     border-bottom: 2px solid var(--accent-pink) !important;
+    font-weight: 600;
 }
 
 [data-testid="stTabs"] button:hover {
@@ -118,17 +175,17 @@ hr {
 }
 
 /* ---- Buttons ---- */
-/* Expand/collapse arrow buttons - completely clean, no border */
+/* Expand/collapse arrow buttons — transparent, no border */
 .stButton > button[key*="toggle_"] {
     background: transparent !important;
-    color: var(--text-secondary) !important;
+    color: var(--text-muted) !important;
     border: none !important;
     border-radius: 0 !important;
     font-weight: 400;
     padding: 0 !important;
     margin: 0 !important;
     box-shadow: none !important;
-    transition: all 0.2s ease;
+    transition: color 0.2s ease, transform 0.25s ease;
     font-size: 1.3rem !important;
     min-width: auto !important;
     width: auto !important;
@@ -155,17 +212,18 @@ hr {
     background: transparent !important;
 }
 
-/* Base buttons - ghost style */
+/* Base buttons — ghost style */
 .stButton > button {
     background: transparent !important;
     color: var(--text-secondary) !important;
     border: 1px solid var(--border-subtle) !important;
     border-radius: 8px !important;
+    font-family: var(--font-body);
     font-weight: 600;
-    padding: 0.4rem 1rem !important;
+    padding: 0.45rem 1.1rem !important;
     box-shadow: none !important;
     transition: all 0.2s ease;
-    font-size: 0.85rem;
+    font-size: 0.82rem;
 }
 
 .stButton > button:hover {
@@ -181,7 +239,7 @@ hr {
     outline: none !important;
 }
 
-/* Primary buttons - pink accent (properly sized) */
+/* Primary buttons — pink accent */
 .stButton > button[kind="primary"],
 .stButton > button[kind="primary"]:focus {
     background-color: var(--accent-pink) !important;
@@ -189,12 +247,13 @@ hr {
     border: none !important;
     border-radius: 6px !important;
     padding: 0.35rem 0.9rem !important;
-    font-size: 0.8rem !important;
+    font-size: 0.78rem !important;
+    font-family: var(--font-body);
     font-weight: 600;
     transition: all 0.15s ease;
     box-shadow: none !important;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.06em;
 }
 
 .stButton > button[kind="primary"]:hover {
@@ -209,23 +268,22 @@ hr {
     transform: translateY(0);
 }
 
-/* Target text inside primary buttons specifically */
+/* Target text inside primary buttons */
 .stButton > button[kind="primary"] p,
 .stButton > button[kind="primary"] span,
 .stButton > button[kind="primary"] div {
-    font-size: 0.8rem !important;
+    font-size: 0.78rem !important;
 }
 
 /* Pill-sized primary buttons (Generate with Opus).
-   A hidden marker div is placed before the button; the adjacent-sibling
-   combinator targets the next element-container's button. */
+   Hidden marker div targets the next sibling's button. */
 .pill-btn-next {
     display: none;
 }
 
 div:has(> .stMarkdown .pill-btn-next) + div .stButton > button[kind="primary"],
 div:has(> .stMarkdown .pill-btn-next) + div .stButton > button[kind="primary"]:focus {
-    font-size: 0.7rem !important;
+    font-size: 0.68rem !important;
     padding: 0.25rem 0.75rem !important;
     border-radius: 12px !important;
     letter-spacing: 0.08em;
@@ -234,7 +292,7 @@ div:has(> .stMarkdown .pill-btn-next) + div .stButton > button[kind="primary"]:f
 div:has(> .stMarkdown .pill-btn-next) + div .stButton > button[kind="primary"] p,
 div:has(> .stMarkdown .pill-btn-next) + div .stButton > button[kind="primary"] span,
 div:has(> .stMarkdown .pill-btn-next) + div .stButton > button[kind="primary"] div {
-    font-size: 0.7rem !important;
+    font-size: 0.68rem !important;
 }
 
 /* ---- Expander (Detail Panels) ---- */
@@ -266,6 +324,7 @@ input[type="text"], textarea {
     color: var(--text-primary) !important;
     border: 1px solid var(--border-color) !important;
     border-radius: 8px !important;
+    font-family: var(--font-body);
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
@@ -285,19 +344,20 @@ input[type="text"]:focus, textarea:focus {
 [data-testid="stAlert"] {
     background-color: rgba(30, 26, 54, 0.6) !important;
     color: var(--text-secondary) !important;
-    border-left: 3px solid #3b82f6 !important;
+    border-left: 3px solid var(--info) !important;
     border-radius: 4px !important;
     padding: 1rem 1.2rem !important;
+    font-family: var(--font-body);
 }
 
-/* Success boxes (green) */
+/* Success boxes */
 .stSuccess {
-    border-left-color: #10b981 !important;
+    border-left-color: var(--success) !important;
 }
 
-/* Error boxes (red) */
+/* Error boxes */
 .stError {
-    border-left-color: #ef4444 !important;
+    border-left-color: var(--error) !important;
 }
 
 /* ---- Code Tags ---- */
@@ -306,8 +366,8 @@ code {
     color: var(--accent-pink) !important;
     padding: 0.15rem 0.5rem;
     border-radius: 4px;
-    font-size: 0.75rem;
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 0.72rem;
+    font-family: var(--font-mono);
     font-weight: 600;
     border: 1px solid rgba(231, 0, 94, 0.2);
     vertical-align: middle;
@@ -317,13 +377,13 @@ code {
 /* ---- Captions ---- */
 .stCaption {
     color: var(--text-secondary) !important;
-    font-size: 0.85rem !important;
+    font-size: 0.82rem !important;
     opacity: 0.9;
 }
 
 /* Source and date captions in news table */
 .news-table-row .stCaption {
-    font-size: 0.8rem !important;
+    font-size: 0.78rem !important;
     font-weight: 500;
     letter-spacing: 0.02em;
 }
@@ -337,7 +397,8 @@ code {
     border: 1px solid var(--border-subtle);
     border-radius: 8px;
     padding: 0.5rem 1rem;
-    font-size: 0.82rem;
+    font-size: 0.78rem;
+    font-family: var(--font-body);
     color: var(--text-secondary);
     margin-bottom: 1rem;
 }
@@ -352,8 +413,14 @@ code {
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background-color: #10b981;
+    background-color: var(--success);
     margin-right: 0.25rem;
+    animation: statusPulse 2s ease infinite;
+}
+
+@keyframes statusPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+    50% { box-shadow: 0 0 0 4px rgba(16, 185, 129, 0); }
 }
 
 /* ---- Containers & Columns ---- */
@@ -372,7 +439,7 @@ code {
     border: none !important;
 }
 
-/* Ensure no borders on main content area */
+/* No borders on main content area */
 .stMarkdown {
     border: none !important;
     margin: 0 !important;
@@ -390,21 +457,22 @@ code {
     background-color: rgba(30, 26, 54, 0.6);
     border-radius: 8px 8px 0 0;
     border-bottom: 2px solid rgba(231, 0, 94, 0.3);
-    padding: 0.85rem 0.5rem;
+    padding: var(--row-padding-y) var(--row-padding-x);
     margin-bottom: 0.25rem;
 }
 
 .news-table-header p,
 .news-table-header span {
-    color: var(--text-secondary) !important;
+    color: var(--text-muted) !important;
+    font-family: var(--font-mono) !important;
     font-weight: 600 !important;
-    font-size: 0.75rem !important;
+    font-size: 0.65rem !important;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.12em;
 }
 
 .news-table-row {
-    padding: 0.85rem 0.5rem;
+    padding: var(--row-padding-y) var(--row-padding-x);
     transition: all 0.15s ease;
     margin: 0 !important;
     border: none !important;
@@ -418,12 +486,12 @@ code {
     border-top: none !important;
     border-bottom: none !important;
     border-right: none !important;
-    padding-left: calc(0.5rem - 2px);
+    padding-left: calc(var(--row-padding-x) - 2px);
 }
 
 /* Style containers for news rows with hover effect */
 [data-testid="stHorizontalBlock"]:has(.stButton) {
-    padding: 0.65rem 0.5rem;
+    padding: 0.75rem var(--row-padding-x);
     transition: all 0.15s ease;
     margin: 0 !important;
     border: none !important;
@@ -437,7 +505,7 @@ code {
     border-left: 2px solid var(--accent-pink) !important;
 }
 
-/* Detail panel styling - clean and minimal */
+/* Detail panel styling — animated entrance */
 .news-table-row + [data-testid="stVerticalBlock"] {
     background-color: rgba(30, 26, 54, 0.5);
     padding: 2rem;
@@ -451,14 +519,15 @@ code {
     line-height: 1.6;
 }
 
-/* Detail panel section headers - blue pills */
+/* Detail panel section headers — blue pills */
 .section-pill {
     display: inline-block;
     background-color: rgba(59, 130, 246, 0.15);
     color: var(--text-primary);
     padding: 0.25rem 0.75rem;
     border-radius: 12px;
-    font-size: 0.7rem;
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.08em;
@@ -469,7 +538,8 @@ code {
 
 .news-table-row + [data-testid="stVerticalBlock"] h3 {
     color: var(--text-primary) !important;
-    font-size: 0.85rem;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
     margin-top: 2rem;
     margin-bottom: 0.75rem;
     text-transform: uppercase;
@@ -482,12 +552,13 @@ code {
     margin-top: 0;
 }
 
-/* Detail panel text content */
+/* Detail panel text content — constrained width for readability */
 .news-table-row + [data-testid="stVerticalBlock"] p {
     color: var(--text-secondary) !important;
-    font-size: 0.8rem;
+    font-size: 0.82rem;
     line-height: 1.7;
     margin-bottom: 0.6rem;
+    max-width: 680px;
 }
 
 /* Detail panel lists */
@@ -502,7 +573,8 @@ code {
     color: var(--text-secondary) !important;
     margin-bottom: 0.5rem;
     line-height: 1.7;
-    font-size: 0.8rem;
+    font-size: 0.82rem;
+    max-width: 680px;
 }
 
 /* Detail panel captions (metadata) */
@@ -517,6 +589,23 @@ code {
     border-radius: 0 10px 10px 0;
     padding: 1.5rem 1.75rem;
     margin: 0.5rem 0 1.25rem 1rem;
+    animation: detailSlideIn 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ---- Detail Panel Animation ---- */
+@keyframes detailSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.detail-enter {
+    animation: detailSlideIn 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 /* ---- Opus Badge ---- */
@@ -529,9 +618,52 @@ code {
     color: #c4b5fd;
     padding: 0.2rem 0.65rem;
     border-radius: 12px;
-    font-size: 0.7rem;
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
     font-weight: 600;
     letter-spacing: 0.03em;
+}
+
+/* ---- Score Pill (inline HTML) ---- */
+.score-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2rem;
+    padding: 0.25rem 0.65rem;
+    border-radius: 8px;
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: 0.8rem;
+    color: #ffffff;
+    text-align: center;
+}
+
+.score-pill.high { background-color: var(--score-high); }
+.score-pill.mid { background-color: var(--score-mid); }
+.score-pill.low { background-color: var(--score-low); }
+
+/* Small score badge for All Sources list */
+.score-badge-sm {
+    display: inline-block;
+    padding: 0.1rem 0.4rem;
+    border-radius: 6px;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: #ffffff;
+}
+
+.score-badge-sm.high { background-color: var(--score-high); }
+.score-badge-sm.mid { background-color: var(--score-mid); }
+.score-badge-sm.low { background-color: var(--score-low); }
+
+/* Date display — monospace for alignment */
+.date-mono {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    letter-spacing: 0.02em;
 }
 
 /* ---- Source Toggle Rows ---- */
@@ -551,7 +683,7 @@ code {
 }
 
 /* ---- Acknowledge Animation ---- */
-@keyframes fadeOut {
+@keyframes fadeOutLeft {
     from {
         opacity: 1;
         transform: translateX(0);
@@ -563,7 +695,7 @@ code {
 }
 
 .news-row-fade-out {
-    animation: fadeOut 0.6s ease-out forwards;
+    animation: fadeOutLeft 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 /* ---- Scrollbar Styling ---- */
@@ -583,4 +715,146 @@ code {
 
 ::-webkit-scrollbar-thumb:hover {
     background: rgba(165, 170, 207, 0.4);
+}
+
+/* ---- Settings Tab Grouped Sections ---- */
+.settings-group {
+    background: rgba(30, 26, 54, 0.3);
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    padding: 1.5rem 1.75rem;
+    margin-bottom: 1.25rem;
+}
+
+.settings-group-header {
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 1.05rem;
+    color: var(--text-primary);
+    margin-bottom: 0.15rem;
+}
+
+.settings-group-desc {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    margin-bottom: 1rem;
+    line-height: 1.5;
+}
+
+/* Settings mini-nav / TOC */
+.settings-nav {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-bottom: 1.5rem;
+}
+
+.settings-nav-item {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    background: rgba(165, 170, 207, 0.06);
+    border: 1px solid var(--border-subtle);
+    padding: 0.3rem 0.7rem;
+    border-radius: 100px;
+    cursor: default;
+    transition: all 0.15s ease;
+}
+
+.settings-nav-item:hover {
+    color: var(--accent-pink);
+    border-color: var(--accent-pink-glow);
+    background: var(--accent-pink-glow);
+}
+
+/* ---- Empty State ---- */
+.empty-state {
+    text-align: center;
+    padding: 3rem 2rem;
+}
+
+.empty-state-icon {
+    font-size: 2.5rem;
+    margin-bottom: 0.75rem;
+    opacity: 0.35;
+}
+
+.empty-state-text {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    max-width: 380px;
+    margin: 0 auto;
+    line-height: 1.6;
+}
+
+.empty-state-hint {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    opacity: 0.6;
+    margin-top: 0.5rem;
+}
+
+/* ---- Skeleton Loader ---- */
+@keyframes shimmer {
+    0% { background-position: -400px 0; }
+    100% { background-position: 400px 0; }
+}
+
+.skeleton-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.85rem 1rem;
+    margin-bottom: 2px;
+}
+
+.skeleton-bar {
+    height: 14px;
+    border-radius: 4px;
+    background: linear-gradient(90deg,
+        rgba(30, 26, 54, 0.5) 0%,
+        rgba(56, 52, 97, 0.4) 50%,
+        rgba(30, 26, 54, 0.5) 100%
+    );
+    background-size: 400px 14px;
+    animation: shimmer 1.6s ease infinite;
+}
+
+.skeleton-score {
+    width: 36px;
+    height: 24px;
+    border-radius: 8px;
+    flex-shrink: 0;
+}
+
+.skeleton-title { flex: 5; height: 16px; }
+.skeleton-source { width: 100px; }
+.skeleton-date { width: 80px; }
+
+/* ---- Related Count Badge ---- */
+.related-count {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    font-weight: 600;
+    color: var(--accent-pink);
+    background: rgba(231, 0, 94, 0.1);
+    border: 1px solid rgba(231, 0, 94, 0.2);
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    margin-left: 0.5rem;
+    vertical-align: middle;
+}
+
+/* ---- Settings Section Divider (lighter than global hr) ---- */
+.settings-divider {
+    border: none;
+    height: 1px;
+    background: var(--border-subtle);
+    margin: 1.25rem 0;
 }
