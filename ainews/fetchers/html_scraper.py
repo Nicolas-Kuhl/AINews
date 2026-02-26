@@ -37,14 +37,16 @@ def scrape_html_page(
     except Exception:
         return []
 
-    # Try heuristics in order; use first that yields results
+    # Run all heuristic strategies and pick the one with the most results
+    best: list[RawNewsItem] = []
     for strategy in (_try_articles, _try_heading_links, _try_list_cards, _try_generic_links):
         items = strategy(doc, base_url, source_name)
         if items:
             items = _deduplicate_items(items)
-            return items[:max_items]
+            if len(items) > len(best):
+                best = items
 
-    return []
+    return best[:max_items]
 
 
 # ---------------------------------------------------------------------------
@@ -144,7 +146,7 @@ def _try_list_cards(doc, base_url: str, source_name: str) -> list[RawNewsItem]:
             best = max(links, key=lambda a: len((a.text_content() or "").strip()))
             href = best.get("href", "").strip()
             title = (best.text_content() or "").strip()
-            if not href or not title or len(title) < 5 or not _is_article_url(href, base_url):
+            if not href or not title or len(title) < 15 or not _is_article_url(href, base_url):
                 continue
             items.append(RawNewsItem(
                 title=title, url=href, source=source_name,
@@ -212,7 +214,13 @@ def _try_generic_links(doc, base_url: str, source_name: str) -> list[RawNewsItem
 
 _NAV_PATTERNS = re.compile(
     r"/(tag|tags|category|categories|author|authors|search|login|signin|signup|"
-    r"register|account|contact|about|privacy|terms|faq|help|#|javascript:)",
+    r"register|account|contact|about|privacy|terms|faq|help|legal|careers|"
+    r"engineering|constitution|economic|#|javascript:)",
+    re.IGNORECASE,
+)
+
+_NAV_PATH_PATTERNS = re.compile(
+    r"(disclosure-policy|cookie-policy|privacy-policy)",
     re.IGNORECASE,
 )
 
@@ -231,8 +239,14 @@ def _is_article_url(url: str, base_url: str) -> bool:
     # Same domain
     if parsed.netloc and base_parsed.netloc and parsed.netloc != base_parsed.netloc:
         return False
+    # Reject same-page fragment links (e.g. /news#main-content)
+    if parsed.path.rstrip("/") == base_parsed.path.rstrip("/") and parsed.fragment:
+        return False
     # Reject nav patterns
-    if _NAV_PATTERNS.search(parsed.path + ("?" + parsed.query if parsed.query else "")):
+    full_path = parsed.path + ("?" + parsed.query if parsed.query else "")
+    if _NAV_PATTERNS.search(full_path):
+        return False
+    if _NAV_PATH_PATTERNS.search(full_path):
         return False
     # Must have a path deeper than just /
     if parsed.path.strip("/") == "":

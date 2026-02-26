@@ -49,12 +49,16 @@ def search_news(query: str, max_results: int = 5) -> list[RawNewsItem]:
     return items
 
 
-def search_all_queries(queries: list[str], max_results: int = 5) -> list[RawNewsItem]:
-    """Run all configured search queries and return combined results."""
+def search_all_queries(queries: list, max_results: int = 5) -> list[RawNewsItem]:
+    """Run all configured search queries and return combined results.
+
+    Each query can be a plain string or a dict with 'query' and 'scan_interval' keys.
+    """
     all_items = []
-    for query in queries:
-        print(f"  [Search] Searching '{query}'...")
-        items = search_news(query, max_results=max_results)
+    for q in queries:
+        query_str = q["query"] if isinstance(q, dict) else q
+        print(f"  [Search] Searching '{query_str}'...")
+        items = search_news(query_str, max_results=max_results)
         print(f"  [Search]   Got {len(items)} items")
         all_items.extend(items)
     return all_items

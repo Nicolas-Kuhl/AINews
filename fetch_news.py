@@ -51,6 +51,40 @@ def write_last_run_timestamp(timestamp_path: Path):
         f.write(datetime.now().isoformat())
 
 
+def get_due_feeds(feeds: list[dict], db: Database) -> list[dict]:
+    """Return only feeds whose scan interval has elapsed since their last scan."""
+    now = datetime.now()
+    due = []
+    for feed in feeds:
+        if not feed.get("enabled", True):
+            continue
+        interval_minutes = feed.get("scan_interval", 15)
+        last_scanned_str = db.get_feed_last_scanned(feed["name"])
+        if last_scanned_str:
+            last_scanned = datetime.fromisoformat(last_scanned_str)
+            elapsed_minutes = (now - last_scanned).total_seconds() / 60
+            if elapsed_minutes < interval_minutes:
+                continue
+        due.append(feed)
+    return due
+
+
+def get_due_queries(queries: list[dict], db: Database) -> list[dict]:
+    """Return only search queries whose scan interval has elapsed."""
+    now = datetime.now()
+    due = []
+    for q in queries:
+        interval_minutes = q.get("scan_interval", 15)
+        last_scanned_str = db.get_feed_last_scanned(f"search:{q['query']}")
+        if last_scanned_str:
+            last_scanned = datetime.fromisoformat(last_scanned_str)
+            elapsed_minutes = (now - last_scanned).total_seconds() / 60
+            if elapsed_minutes < interval_minutes:
+                continue
+        due.append(q)
+    return due
+
+
 def main():
     # Load config first to get data directory path
     cfg = load_config()
@@ -77,22 +111,36 @@ def main():
     logger.info("[2/8] Initializing database...")
     db = Database(cfg["db_path"])
 
-    # 3. Fetch RSS feeds
-    logger.info(f"\n[3/8] Fetching RSS feeds ({len(cfg['feeds'])} feeds)...")
+    # 3. Fetch RSS feeds (only those due for scanning)
+    due_feeds = get_due_feeds(cfg["feeds"], db)
+    enabled_count = sum(1 for f in cfg["feeds"] if f.get("enabled", True))
+    logger.info(f"\n[3/8] Fetching RSS feeds ({len(due_feeds)}/{enabled_count} feeds due)...")
     rss_items = fetch_all_feeds(
-        cfg["feeds"],
+        due_feeds,
         timeout=cfg["feed_timeout"],
         max_items=cfg["max_items_per_feed"],
     )
     logger.info(f"  Total RSS items: {len(rss_items)}")
 
-    # 4. Search DuckDuckGo
-    logger.info(f"\n[4/8] Searching DuckDuckGo ({len(cfg['search_queries'])} queries)...")
+    # Record scan timestamps for feeds that were fetched
+    scan_time = datetime.now().isoformat()
+    for feed in due_feeds:
+        db.update_feed_last_scanned(feed["name"], scan_time)
+
+    # 4. Search DuckDuckGo (only queries due for scanning)
+    all_queries = cfg["search_queries"]
+    due_queries = get_due_queries(all_queries, db)
+    logger.info(f"\n[4/8] Searching DuckDuckGo ({len(due_queries)}/{len(all_queries)} queries due)...")
     search_items = search_all_queries(
-        cfg["search_queries"],
+        due_queries,
         max_results=cfg["max_search_results"],
     )
     logger.info(f"  Total search items: {len(search_items)}")
+
+    # Record scan timestamps for queries that were searched
+    query_scan_time = datetime.now().isoformat()
+    for q in due_queries:
+        db.update_feed_last_scanned(f"search:{q['query']}", query_scan_time)
 
     # 5. Combine and deduplicate (against batch + existing DB items)
     combined = rss_items + search_items

@@ -762,7 +762,7 @@ def _render_settings_tab(cfg, db, project_root):
     for idx, feed in rss_feeds:
         feed_type = feed.get("type", "auto")
         is_enabled = feed.get("enabled", True)
-        col_toggle, col_type, col_name, col_url, col_rm = st.columns([0.4, 0.8, 2.5, 5, 0.4])
+        col_toggle, col_type, col_name, col_url, col_interval, col_rm = st.columns([0.4, 0.8, 2, 4, 1.2, 0.4])
 
         with col_toggle:
             enabled = st.toggle(
@@ -779,8 +779,28 @@ def _render_settings_tab(cfg, db, project_root):
         col_type.markdown(f"`{feed_type}`")
         name_style = "font-weight:500;" if is_enabled else "font-weight:500;color:#555;"
         col_name.markdown(f'<span style="{name_style}">{feed["name"]}</span>', unsafe_allow_html=True)
-        url_style = "font-size:0.8rem;" if is_enabled else "font-size:0.8rem;color:#444;"
         col_url.caption(feed["url"])
+
+        with col_interval:
+            interval_options = [10, 15, 30, 60]
+            current_interval = feed.get("scan_interval", 15)
+            try:
+                current_idx = interval_options.index(current_interval)
+            except ValueError:
+                current_idx = 1
+            new_interval = st.selectbox(
+                "Interval",
+                options=interval_options,
+                index=current_idx,
+                format_func=lambda x: f"{x}m",
+                key=f"interval_rss_{idx}",
+                label_visibility="collapsed",
+                disabled=not is_enabled,
+            )
+            if new_interval != current_interval:
+                cfg["feeds"][idx]["scan_interval"] = new_interval
+                save_config(cfg)
+                st.rerun()
 
         with col_rm:
             if st.button("✕", key=f"rm_feed_{idx}"):
@@ -798,7 +818,7 @@ def _render_settings_tab(cfg, db, project_root):
         with ar4:
             if st.button("Add", key="add_rss_feed", type="primary"):
                 if new_rss_name and new_rss_url:
-                    entry = {"name": new_rss_name, "url": new_rss_url, "enabled": True}
+                    entry = {"name": new_rss_name, "url": new_rss_url, "enabled": True, "scan_interval": 15}
                     if new_rss_type == "rss":
                         entry["type"] = "rss"
                     cfg.setdefault("feeds", []).append(entry)
@@ -813,7 +833,7 @@ def _render_settings_tab(cfg, db, project_root):
 
     for idx, feed in web_feeds:
         is_enabled = feed.get("enabled", True)
-        col_toggle, col_name, col_url, col_rm = st.columns([0.4, 3, 5.2, 0.4])
+        col_toggle, col_name, col_url, col_interval, col_rm = st.columns([0.4, 2.5, 4.1, 1.2, 0.4])
 
         with col_toggle:
             enabled = st.toggle(
@@ -830,6 +850,27 @@ def _render_settings_tab(cfg, db, project_root):
         name_style = "font-weight:500;" if is_enabled else "font-weight:500;color:#555;"
         col_name.markdown(f'<span style="{name_style}">{feed["name"]}</span>', unsafe_allow_html=True)
         col_url.caption(feed["url"])
+
+        with col_interval:
+            interval_options = [10, 15, 30, 60]
+            current_interval = feed.get("scan_interval", 15)
+            try:
+                current_idx = interval_options.index(current_interval)
+            except ValueError:
+                current_idx = 1
+            new_interval = st.selectbox(
+                "Interval",
+                options=interval_options,
+                index=current_idx,
+                format_func=lambda x: f"{x}m",
+                key=f"interval_web_{idx}",
+                label_visibility="collapsed",
+                disabled=not is_enabled,
+            )
+            if new_interval != current_interval:
+                cfg["feeds"][idx]["scan_interval"] = new_interval
+                save_config(cfg)
+                st.rerun()
 
         with col_rm:
             if st.button("✕", key=f"rm_feed_{idx}"):
@@ -850,7 +891,8 @@ def _render_settings_tab(cfg, db, project_root):
                         "name": new_web_name,
                         "url": new_web_url,
                         "type": "web",
-                        "enabled": True
+                        "enabled": True,
+                        "scan_interval": 15,
                     })
                     save_config(cfg)
                     st.rerun()
@@ -861,8 +903,31 @@ def _render_settings_tab(cfg, db, project_root):
     st.markdown("#### Search Queries")
     queries = cfg.get("search_queries", [])
     for i, q in enumerate(queries):
-        col_q, col_rm = st.columns([9, 1])
-        col_q.markdown(f"**{q}**")
+        query_str = q["query"] if isinstance(q, dict) else q
+        col_q, col_interval, col_rm = st.columns([7.8, 1.2, 0.4])
+        col_q.markdown(f"**{query_str}**")
+        with col_interval:
+            interval_options = [10, 15, 30, 60]
+            current_interval = q.get("scan_interval", 15) if isinstance(q, dict) else 15
+            try:
+                current_idx = interval_options.index(current_interval)
+            except ValueError:
+                current_idx = 1
+            new_interval = st.selectbox(
+                "Interval",
+                options=interval_options,
+                index=current_idx,
+                format_func=lambda x: f"{x}m",
+                key=f"interval_query_{i}",
+                label_visibility="collapsed",
+            )
+            if new_interval != current_interval:
+                if isinstance(cfg["search_queries"][i], dict):
+                    cfg["search_queries"][i]["scan_interval"] = new_interval
+                else:
+                    cfg["search_queries"][i] = {"query": query_str, "scan_interval": new_interval}
+                save_config(cfg)
+                st.rerun()
         with col_rm:
             if st.button("✕", key=f"rm_query_{i}", type="primary"):
                 cfg["search_queries"].pop(i)
@@ -877,7 +942,7 @@ def _render_settings_tab(cfg, db, project_root):
         with aq2:
             if st.button("Add", key="add_query", type="primary"):
                 if new_query:
-                    cfg.setdefault("search_queries", []).append(new_query)
+                    cfg.setdefault("search_queries", []).append({"query": new_query, "scan_interval": 15})
                     save_config(cfg)
                     st.rerun()
 

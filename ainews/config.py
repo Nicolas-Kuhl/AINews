@@ -34,6 +34,20 @@ def load_config(path: Path = CONFIG_PATH) -> dict:
     cfg.setdefault("content_max_chars", 10000)
     cfg.setdefault("content_score_chars", 3000)
 
+    # Ensure every feed has a scan_interval (default: 15 min)
+    for feed in cfg["feeds"]:
+        feed.setdefault("scan_interval", 15)
+
+    # Normalize search_queries: plain strings become dicts with scan_interval
+    normalized = []
+    for q in cfg.get("search_queries", []):
+        if isinstance(q, str):
+            normalized.append({"query": q, "scan_interval": 15})
+        else:
+            q.setdefault("scan_interval", 15)
+            normalized.append(q)
+    cfg["search_queries"] = normalized
+
     return cfg
 
 

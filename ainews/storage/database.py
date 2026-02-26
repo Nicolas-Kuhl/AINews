@@ -42,6 +42,13 @@ SCHEMA_PROCESSED_AT_INDEX = (
     "CREATE INDEX IF NOT EXISTS idx_processed_at ON news_items(processed_at DESC);"
 )
 
+SCHEMA_FEED_SCANS = """
+CREATE TABLE IF NOT EXISTS feed_scans (
+    feed_name TEXT PRIMARY KEY,
+    last_scanned TEXT NOT NULL
+);
+"""
+
 
 class Database:
     def __init__(self, db_path: str):
@@ -106,6 +113,24 @@ class Database:
             pass
         # Add index on processed_at for fast "last 24 hours" queries
         self.conn.execute(SCHEMA_PROCESSED_AT_INDEX)
+        # Create feed_scans table for per-feed scan interval tracking
+        self.conn.executescript(SCHEMA_FEED_SCANS)
+        self.conn.commit()
+
+    def get_feed_last_scanned(self, feed_name: str) -> Optional[str]:
+        """Return the ISO timestamp of the last scan for a feed, or None."""
+        row = self.conn.execute(
+            "SELECT last_scanned FROM feed_scans WHERE feed_name = ?",
+            (feed_name,),
+        ).fetchone()
+        return row["last_scanned"] if row else None
+
+    def update_feed_last_scanned(self, feed_name: str, timestamp: str):
+        """Record that a feed was just scanned."""
+        self.conn.execute(
+            "INSERT OR REPLACE INTO feed_scans (feed_name, last_scanned) VALUES (?, ?)",
+            (feed_name, timestamp),
+        )
         self.conn.commit()
 
     def url_exists(self, url: str) -> bool:
