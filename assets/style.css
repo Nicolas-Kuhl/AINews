@@ -72,9 +72,9 @@
         --accent-subtle: rgba(231, 0, 94, 0.12);
         --accent-border: rgba(231, 0, 94, 0.25);
 
-        --score-high: #ef4444;
-        --score-mid: #f59e0b;
-        --score-low: #6b7280;
+        --score-high: #f87171;
+        --score-mid: #fbbf24;
+        --score-low: #9ca3af;
 
         --success: #22c55e;
         --error: #ef4444;
@@ -358,8 +358,8 @@ input[type="text"]:focus, textarea:focus {
 /* ---- Score (colored number) ---- */
 .score-num {
     font-family: var(--font-mono);
-    font-weight: 600;
-    font-size: 0.8rem;
+    font-weight: 700;
+    font-size: 0.95rem;
     font-variant-numeric: tabular-nums;
 }
 
@@ -431,43 +431,7 @@ input[type="text"]:focus, textarea:focus {
     50% { box-shadow: 0 0 0 3px rgba(22, 163, 74, 0); }
 }
 
-/* ---- Detail Card ---- */
-.detail-card {
-    background: var(--bg-surface);
-    border: 1px solid var(--border-default);
-    border-left: 3px solid var(--accent);
-    border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
-    padding: var(--space-xl);
-    margin: var(--space-sm) 0 var(--space-lg) 0;
-    box-shadow: var(--shadow-sm);
-    animation: slideIn 0.2s ease-out;
-}
-
-@keyframes slideIn {
-    from { opacity: 0; transform: translateY(-4px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-.detail-card p {
-    color: var(--text-secondary);
-    font-size: 0.85rem;
-    line-height: 1.65;
-    max-width: 680px;
-}
-
-.detail-card li {
-    color: var(--text-secondary);
-    font-size: 0.85rem;
-    line-height: 1.65;
-    max-width: 680px;
-    margin-bottom: 0.35rem;
-}
-
-.detail-card ul, .detail-card ol {
-    margin-left: 1.25rem;
-    margin-top: 0.35rem;
-    margin-bottom: 0.75rem;
-}
+/* (detail card removed — details render inline) */
 
 /* ---- Section Label ---- */
 .section-label {

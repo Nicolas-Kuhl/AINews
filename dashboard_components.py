@@ -278,11 +278,11 @@ def _render_news_item(primary, related, db, cfg):
             else:
                 st.markdown('<span style="color:var(--text-muted);font-size:0.8rem;">✓</span>', unsafe_allow_html=True)
 
-    # Expandable details
+    # Expandable details — indented to align under title column
     if is_expanded:
-        st.markdown('<div class="detail-card">', unsafe_allow_html=True)
-        _render_item_details(primary, related, db, cfg)
-        st.markdown('</div>', unsafe_allow_html=True)
+        _, detail_col = st.columns([0.9, 9.3])
+        with detail_col:
+            _render_item_details(primary, related, db, cfg)
 
 
 def _render_item_details(primary, related, db, cfg):
