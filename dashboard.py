@@ -121,7 +121,12 @@ def main():
     # Load CSS from external file
     load_css(PROJECT_ROOT / "assets" / "style.css")
 
-    st.title("AI News Aggregator")
+    st.markdown(
+        '<p style="font-size:0.65rem;letter-spacing:0.1em;text-transform:uppercase;'
+        'color:var(--text-muted);margin:0 0 0.15rem 0;">DASHBOARD</p>'
+        '<h1 style="font-size:1.5rem;font-weight:600;margin:0 0 0.75rem 0;">AI News</h1>',
+        unsafe_allow_html=True,
+    )
 
     cfg = load_config()
     db = Database(cfg["db_path"])
@@ -152,28 +157,33 @@ def main():
             relative_time = run_stats['last_run']
 
         st.markdown(
-            f'<div class="status-bar">'
+            f'<span class="status-chip">'
             f'<span class="status-dot"></span>'
-            f'<span>Last run: <strong>{relative_time}</strong></span>'
-            f'<span>·</span>'
-            f'<span>24h: <strong>{run_stats["items_added"]} items</strong></span>'
-            f'</div>',
+            f'Last run <strong>{relative_time}</strong>'
+            f'</span> '
+            f'<span class="status-chip">'
+            f'24h <strong>{run_stats["items_added"]} items</strong>'
+            f'</span>',
             unsafe_allow_html=True,
         )
     else:
-        # Empty state with personality
         st.markdown(
             '<div class="empty-state">'
-            '<div class="empty-state-icon">📡</div>'
             '<div class="empty-state-text">No data yet — run the fetch pipeline from the Settings tab to get started.</div>'
-            '<div class="empty-state-hint">Settings → Pipeline → Run Pipeline</div>'
+            '<div class="empty-state-hint">Settings > Pipeline > Run Pipeline</div>'
             '</div>',
             unsafe_allow_html=True,
         )
 
     # Sidebar filters
     with st.sidebar:
-        st.header("Filters")
+        st.markdown(
+            '<p style="font-size:0.65rem;letter-spacing:0.1em;text-transform:uppercase;'
+            'color:var(--text-muted);margin:0 0 0.5rem 0;">FILTERS</p>',
+            unsafe_allow_html=True,
+        )
+
+        search_query = st.text_input("Search titles/summaries", placeholder="Type to filter...")
 
         score_range = st.slider("Score range", 1, 10, (1, 10))
 
@@ -188,9 +198,6 @@ def main():
         sort_options = {"Score": "score", "Date": "published", "Source": "source", "Title": "title"}
         sort_label = st.selectbox("Sort by", list(sort_options.keys()))
         sort_dir = st.radio("Direction", ["DESC", "ASC"], horizontal=True)
-
-        st.divider()
-        search_query = st.text_input("🔍 Search titles/summaries", placeholder="Type to filter...")
 
     # Tabs — dynamic from config categories
     categories = cfg.get("categories", ["New Releases", "Research", "Business", "Developer Tools"])
@@ -219,11 +226,14 @@ def main():
         with tabs[i]:
             grouped = get_grouped_items(cfg["db_path"], category, **filter_kwargs)
             grouped = filter_grouped_items(grouped, search_query)
-            st.subheader(f"{category} ({len(grouped)})")
+            st.markdown(
+                f'<p style="font-size:0.75rem;color:var(--text-muted);margin:0.5rem 0;">'
+                f'{len(grouped)} items</p>',
+                unsafe_allow_html=True,
+            )
             if not grouped:
                 st.markdown(
                     '<div class="empty-state">'
-                    '<div class="empty-state-icon">◇</div>'
                     f'<div class="empty-state-text">No {category.lower()} stories matched your filters.</div>'
                     '<div class="empty-state-hint">Try widening your score range or date window</div>'
                     '</div>',
@@ -328,7 +338,7 @@ All configuration is managed from the Settings tab:
 |---|---|
 | **Scoring** | Claude Sonnet 4.5 via Anthropic API |
 | **Learning Objectives** | Claude Opus 4.6 via Anthropic API |
-| **Dashboard** | Streamlit with custom Pluralsight-inspired dark theme |
+| **Dashboard** | Streamlit with auto light/dark minimalist theme |
 | **Database** | SQLite with automatic schema migrations |
 | **RSS parsing** | `feedparser` |
 | **HTTP client** | `httpx` |

@@ -10,7 +10,7 @@ def search_news(query: str, max_results: int = 5) -> list[RawNewsItem]:
     """Search DuckDuckGo news for a query and return RawNewsItems."""
     items = []
     try:
-        with DDGS() as ddgs:
+        with DDGS(verify=False) as ddgs:
             results = ddgs.news(query, max_results=max_results)
     except Exception as e:
         print(f"  [Search] Error searching '{query}': {e}")
