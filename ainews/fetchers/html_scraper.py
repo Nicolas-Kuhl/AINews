@@ -4,6 +4,7 @@ import re
 from datetime import datetime
 from typing import Optional
 from urllib.parse import urljoin, urlparse
+from typing import Optional
 
 from dateutil import parser as dateparser
 from lxml import html as lxml_html
