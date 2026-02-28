@@ -100,14 +100,14 @@ def deep_semantic_dedup(
     model: str,
     fuzzy_low: int = 30,
     fuzzy_high: int = 70,
-    batch_size: int = 15,
 ) -> int:
-    """Scan all DB items for semantic duplicates using Claude.
+    """Scan unacknowledged DB items for semantic duplicates using Claude.
 
     Finds pairs of items with borderline fuzzy similarity (between fuzzy_low
     and fuzzy_high) that share at least one significant keyword, then asks
-    Claude to confirm whether they're the same story. Confirmed pairs are
-    grouped together, with vendor-sourced items preferred as primary.
+    Claude to confirm whether they're the same story in a single API call.
+    Confirmed pairs are grouped together, with vendor-sourced items preferred
+    as primary.
 
     Args:
         db: Database instance.
@@ -115,12 +115,11 @@ def deep_semantic_dedup(
         model: Model ID for Claude.
         fuzzy_low: Minimum fuzzy score to consider a pair.
         fuzzy_high: Maximum fuzzy score (above this, run_grouper already catches them).
-        batch_size: Max pairs to send to Claude per API call.
 
     Returns:
         Number of new groupings created.
     """
-    items = db.get_all_items_for_dedup()
+    items = db.get_all_items_for_dedup(unacknowledged_only=True)
     if len(items) < 2:
         return 0
 
@@ -147,30 +146,26 @@ def deep_semantic_dedup(
 
     logger.info(f"  Deep semantic dedup: {len(candidates)} candidate pairs to review.")
 
-    # Send to Claude in batches (smaller batches since we include summaries)
-    confirmed_pairs: list[tuple[str, str]] = []
-    for batch_start in range(0, len(candidates), batch_size):
-        batch = candidates[batch_start:batch_start + batch_size]
+    # Build prompt with all candidate pairs in a single call
+    pair_parts = []
+    for i, (a, b) in enumerate(candidates):
+        summary_a = a["summary"][:200] if a["summary"] else "(no summary)"
+        summary_b = b["summary"][:200] if b["summary"] else "(no summary)"
+        pair_parts.append(
+            f'{i+1}. A: "{a["title"]}" ({a["source"]})\n'
+            f'   Summary: {summary_a}\n'
+            f'   B: "{b["title"]}" ({b["source"]})\n'
+            f'   Summary: {summary_b}'
+        )
+    pairs_text = "\n\n".join(pair_parts)
 
-        pair_parts = []
-        for i, (a, b) in enumerate(batch):
-            summary_a = a["summary"][:200] if a["summary"] else "(no summary)"
-            summary_b = b["summary"][:200] if b["summary"] else "(no summary)"
-            pair_parts.append(
-                f'{i+1}. A: "{a["title"]}" ({a["source"]})\n'
-                f'   Summary: {summary_a}\n'
-                f'   B: "{b["title"]}" ({b["source"]})\n'
-                f'   Summary: {summary_b}'
-            )
-        pairs_text = "\n\n".join(pair_parts)
-
-        try:
-            response = client.messages.create(
-                model=model,
-                max_tokens=1024,
-                messages=[{
-                    "role": "user",
-                    "content": f"""You are a news deduplication assistant. For each pair below, determine if article A is about the same specific news story/event as article B. Use the titles, sources, and summaries to make your judgment.
+    try:
+        response = client.messages.create(
+            model=model,
+            max_tokens=4096,
+            messages=[{
+                "role": "user",
+                "content": f"""You are a news deduplication assistant. For each pair below, determine if article A is about the same specific news story/event as article B. Use the titles, sources, and summaries to make your judgment.
 
 Answer ONLY with a JSON array of pair numbers that ARE about the same story. If none match, return an empty array [].
 
@@ -179,21 +174,22 @@ Be strict: two articles must be about the same specific event or announcement to
 {pairs_text}
 
 Return ONLY a JSON array, e.g. [1, 3] or []. No other text.""",
-                }],
-            )
+            }],
+        )
 
-            response_text = response.content[0].text.strip()
-            match_indices = json.loads(response_text)
-            if not isinstance(match_indices, list):
-                match_indices = []
-        except Exception as e:
-            logger.warning(f"  Deep semantic dedup batch error: {e}")
-            continue
+        response_text = response.content[0].text.strip()
+        match_indices = json.loads(response_text)
+        if not isinstance(match_indices, list):
+            match_indices = []
+    except Exception as e:
+        logger.warning(f"  Deep semantic dedup error: {e}")
+        return 0
 
-        for idx in match_indices:
-            if 1 <= idx <= len(batch):
-                a, b = batch[idx - 1]
-                confirmed_pairs.append((a["title"], b["title"]))
+    confirmed_pairs: list[tuple[str, str]] = []
+    for idx in match_indices:
+        if 1 <= idx <= len(candidates):
+            a, b = candidates[idx - 1]
+            confirmed_pairs.append((a["title"], b["title"]))
 
     if not confirmed_pairs:
         logger.info("  Deep semantic dedup: Claude found no same-story pairs.")

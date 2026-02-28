@@ -314,11 +314,13 @@ class Database:
         ).fetchall()
         return [{"id": r["id"], "title": r["title"], "url": r["url"]} for r in rows]
 
-    def get_all_items_for_dedup(self) -> list[dict]:
+    def get_all_items_for_dedup(self, unacknowledged_only: bool = False) -> list[dict]:
         """Get id, title, url, source, summary for semantic dedup."""
-        rows = self.conn.execute(
-            "SELECT id, title, url, source, summary FROM news_items ORDER BY score DESC"
-        ).fetchall()
+        sql = "SELECT id, title, url, source, summary FROM news_items"
+        if unacknowledged_only:
+            sql += " WHERE acknowledged = 0"
+        sql += " ORDER BY score DESC"
+        rows = self.conn.execute(sql).fetchall()
         return [
             {"id": r["id"], "title": r["title"], "url": r["url"],
              "source": r["source"], "summary": r["summary"] or ""}
