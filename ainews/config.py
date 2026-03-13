@@ -34,17 +34,30 @@ def load_config(path: Path = CONFIG_PATH) -> dict:
     cfg.setdefault("content_max_chars", 10000)
     cfg.setdefault("content_score_chars", 3000)
 
-    # Ensure every feed has a scan_interval (default: 15 min)
-    for feed in cfg["feeds"]:
-        feed.setdefault("scan_interval", 15)
+    # Category-based intervals (default: trusted=15min, open=24h)
+    cfg.setdefault("trusted_interval", 15)
+    cfg.setdefault("open_interval", 1440)
 
-    # Normalize search_queries: plain strings become dicts with scan_interval
+    # Normalize feeds: ensure category field, migrate from scan_interval if needed
+    for feed in cfg["feeds"]:
+        if "category" not in feed:
+            # Migrate: infer category from scan_interval if present
+            interval = feed.pop("scan_interval", 15)
+            feed["category"] = "open" if interval > 60 else "trusted"
+        else:
+            feed.pop("scan_interval", None)
+
+    # Normalize search_queries: plain strings become dicts, default category=open
     normalized = []
     for q in cfg.get("search_queries", []):
         if isinstance(q, str):
-            normalized.append({"query": q, "scan_interval": 15})
+            normalized.append({"query": q, "category": "open"})
         else:
-            q.setdefault("scan_interval", 15)
+            if "category" not in q:
+                interval = q.pop("scan_interval", 15)
+                q["category"] = "open" if interval > 60 else "open"
+            else:
+                q.pop("scan_interval", None)
             normalized.append(q)
     cfg["search_queries"] = normalized
 

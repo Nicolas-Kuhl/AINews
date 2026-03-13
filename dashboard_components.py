@@ -646,18 +646,58 @@ def _render_settings_tab(cfg, db, project_root):
     # ── Sources ──
     with st.expander("Sources", expanded=False):
         feeds = cfg.get("feeds", [])
-        rss_feeds = [(i, f) for i, f in enumerate(feeds) if f.get("type", "auto") in ("rss", "auto")]
-        web_feeds = [(i, f) for i, f in enumerate(feeds) if f.get("type") == "web"]
+        queries = cfg.get("search_queries", [])
 
-        st.markdown("**RSS & Auto-Detect Feeds**")
-        st.caption("Standard HTTP requests via feedparser or httpx.")
+        # ── Global interval controls ──
+        st.markdown("**Scan Intervals**")
+        int_col1, int_col2 = st.columns(2)
+        with int_col1:
+            trusted_options = [10, 15, 30, 60]
+            current_trusted = cfg.get("trusted_interval", 15)
+            try:
+                ti = trusted_options.index(current_trusted)
+            except ValueError:
+                ti = 1
+            new_trusted = st.selectbox(
+                "Trusted interval", options=trusted_options, index=ti,
+                format_func=lambda x: f"{x} min", key="trusted_interval_sel",
+            )
+            if new_trusted != current_trusted:
+                cfg["trusted_interval"] = new_trusted
+                save_config(cfg)
+                st.rerun()
+        with int_col2:
+            open_options = [360, 720, 1440, 2880]
+            open_labels = {360: "6 hours", 720: "12 hours", 1440: "24 hours", 2880: "48 hours"}
+            current_open = cfg.get("open_interval", 1440)
+            try:
+                oi = open_options.index(current_open)
+            except ValueError:
+                oi = 2
+            new_open = st.selectbox(
+                "Open interval", options=open_options, index=oi,
+                format_func=lambda x: open_labels.get(x, f"{x}m"), key="open_interval_sel",
+            )
+            if new_open != current_open:
+                cfg["open_interval"] = new_open
+                save_config(cfg)
+                st.rerun()
 
-        for idx, feed in rss_feeds:
+        st.divider()
+
+        # ── Trusted Sources ──
+        trusted_feeds = [(i, f) for i, f in enumerate(feeds) if f.get("category", "trusted") == "trusted"]
+        trusted_queries = [(i, q) for i, q in enumerate(queries) if q.get("category", "open") == "trusted"]
+
+        st.markdown("**Trusted Sources**")
+        st.caption(f"Official vendor feeds — scanned every {cfg.get('trusted_interval', 15)} min.")
+
+        for idx, feed in trusted_feeds:
             feed_type = feed.get("type", "auto")
             is_enabled = feed.get("enabled", True)
-            col_toggle, col_type, col_name, col_url, col_interval, col_rm = st.columns([0.4, 0.8, 2, 4, 1.2, 0.4])
+            col_toggle, col_type, col_name, col_url, col_cat, col_rm = st.columns([0.4, 0.6, 2, 4, 1.2, 0.4])
             with col_toggle:
-                enabled = st.toggle("on", value=is_enabled, key=f"toggle_rss_{idx}", label_visibility="collapsed")
+                enabled = st.toggle("on", value=is_enabled, key=f"toggle_feed_{idx}", label_visibility="collapsed")
                 if enabled != is_enabled:
                     cfg["feeds"][idx]["enabled"] = enabled
                     save_config(cfg)
@@ -666,20 +706,13 @@ def _render_settings_tab(cfg, db, project_root):
             name_style = "font-weight:500;" if is_enabled else "font-weight:500;color:var(--text-muted);"
             col_name.markdown(f'<span style="{name_style}">{feed["name"]}</span>', unsafe_allow_html=True)
             col_url.caption(feed["url"])
-            with col_interval:
-                interval_options = [10, 15, 30, 60]
-                current_interval = feed.get("scan_interval", 15)
-                try:
-                    ci = interval_options.index(current_interval)
-                except ValueError:
-                    ci = 1
-                new_interval = st.selectbox(
-                    "Interval", options=interval_options, index=ci,
-                    format_func=lambda x: f"{x}m", key=f"interval_rss_{idx}",
-                    label_visibility="collapsed", disabled=not is_enabled,
+            with col_cat:
+                new_cat = st.selectbox(
+                    "Category", options=["trusted", "open"], index=0,
+                    key=f"cat_feed_{idx}", label_visibility="collapsed", disabled=not is_enabled,
                 )
-                if new_interval != current_interval:
-                    cfg["feeds"][idx]["scan_interval"] = new_interval
+                if new_cat != "trusted":
+                    cfg["feeds"][idx]["category"] = new_cat
                     save_config(cfg)
                     st.rerun()
             with col_rm:
@@ -688,53 +721,59 @@ def _render_settings_tab(cfg, db, project_root):
                     save_config(cfg)
                     st.rerun()
 
-        with st.container():
-            st.markdown("**Add RSS / Auto Feed**")
-            ar1, ar2, ar3, ar4 = st.columns([2, 2.5, 4.5, 1])
-            new_rss_type = ar1.selectbox("Type", ["auto", "rss"], key="new_rss_type", label_visibility="collapsed")
-            new_rss_name = ar2.text_input("Name", key="new_rss_name", label_visibility="collapsed", placeholder="Feed name")
-            new_rss_url = ar3.text_input("URL", key="new_rss_url", label_visibility="collapsed", placeholder="https://example.com/feed.xml")
-            with ar4:
-                if st.button("Add", key="add_rss_feed", type="primary"):
-                    if new_rss_name and new_rss_url:
-                        entry = {"name": new_rss_name, "url": new_rss_url, "enabled": True, "scan_interval": 15}
-                        if new_rss_type == "rss":
-                            entry["type"] = "rss"
-                        cfg.setdefault("feeds", []).append(entry)
-                        save_config(cfg)
-                        st.rerun()
+        for qi, q in trusted_queries:
+            query_str = q["query"] if isinstance(q, dict) else q
+            col_icon, col_type, col_name, col_blank, col_cat, col_rm = st.columns([0.4, 0.6, 6, 0.0, 1.2, 0.4])
+            col_icon.markdown("")
+            col_type.markdown("`search`")
+            col_name.markdown(f"**{query_str}**")
+            with col_cat:
+                new_cat = st.selectbox(
+                    "Category", options=["trusted", "open"], index=0,
+                    key=f"cat_query_{qi}", label_visibility="collapsed",
+                )
+                if new_cat != "trusted":
+                    cfg["search_queries"][qi]["category"] = new_cat
+                    save_config(cfg)
+                    st.rerun()
+            with col_rm:
+                if st.button("✕", key=f"rm_query_{qi}", type="primary"):
+                    cfg["search_queries"].pop(qi)
+                    save_config(cfg)
+                    st.rerun()
 
         st.divider()
 
-        st.markdown("**Websites (Browser Scraping)**")
-        st.caption("Headless browser for JS-rendered pages.")
+        # ── Open Sources ──
+        open_feeds = [(i, f) for i, f in enumerate(feeds) if f.get("category", "trusted") == "open"]
+        open_queries = [(i, q) for i, q in enumerate(queries) if q.get("category", "open") == "open"]
 
-        for idx, feed in web_feeds:
+        open_interval_val = cfg.get("open_interval", 1440)
+        open_label = open_labels.get(open_interval_val, f"{open_interval_val}m")
+        st.markdown("**Open Sources**")
+        st.caption(f"General news & web searches — scanned every {open_label}.")
+
+        for idx, feed in open_feeds:
+            feed_type = feed.get("type", "auto")
             is_enabled = feed.get("enabled", True)
-            col_toggle, col_name, col_url, col_interval, col_rm = st.columns([0.4, 2.5, 4.1, 1.2, 0.4])
+            col_toggle, col_type, col_name, col_url, col_cat, col_rm = st.columns([0.4, 0.6, 2, 4, 1.2, 0.4])
             with col_toggle:
-                enabled = st.toggle("on", value=is_enabled, key=f"toggle_web_{idx}", label_visibility="collapsed")
+                enabled = st.toggle("on", value=is_enabled, key=f"toggle_feed_{idx}", label_visibility="collapsed")
                 if enabled != is_enabled:
                     cfg["feeds"][idx]["enabled"] = enabled
                     save_config(cfg)
                     st.rerun()
+            col_type.markdown(f"`{feed_type}`")
             name_style = "font-weight:500;" if is_enabled else "font-weight:500;color:var(--text-muted);"
             col_name.markdown(f'<span style="{name_style}">{feed["name"]}</span>', unsafe_allow_html=True)
             col_url.caption(feed["url"])
-            with col_interval:
-                interval_options = [10, 15, 30, 60]
-                current_interval = feed.get("scan_interval", 15)
-                try:
-                    ci = interval_options.index(current_interval)
-                except ValueError:
-                    ci = 1
-                new_interval = st.selectbox(
-                    "Interval", options=interval_options, index=ci,
-                    format_func=lambda x: f"{x}m", key=f"interval_web_{idx}",
-                    label_visibility="collapsed", disabled=not is_enabled,
+            with col_cat:
+                new_cat = st.selectbox(
+                    "Category", options=["trusted", "open"], index=1,
+                    key=f"cat_feed_{idx}", label_visibility="collapsed", disabled=not is_enabled,
                 )
-                if new_interval != current_interval:
-                    cfg["feeds"][idx]["scan_interval"] = new_interval
+                if new_cat != "open":
+                    cfg["feeds"][idx]["category"] = new_cat
                     save_config(cfg)
                     st.rerun()
             with col_rm:
@@ -743,62 +782,57 @@ def _render_settings_tab(cfg, db, project_root):
                     save_config(cfg)
                     st.rerun()
 
-        with st.container():
-            st.markdown("**Add Website**")
-            aw1, aw2, aw3 = st.columns([3, 5.5, 1])
-            new_web_name = aw1.text_input("Name", key="new_web_name", label_visibility="collapsed", placeholder="Site name")
-            new_web_url = aw2.text_input("URL", key="new_web_url", label_visibility="collapsed", placeholder="https://example.com/news/")
-            with aw3:
-                if st.button("Add", key="add_web_feed", type="primary"):
-                    if new_web_name and new_web_url:
-                        cfg.setdefault("feeds", []).append({
-                            "name": new_web_name, "url": new_web_url,
-                            "type": "web", "enabled": True, "scan_interval": 15,
-                        })
-                        save_config(cfg)
-                        st.rerun()
-
-        st.divider()
-
-        st.markdown("**Search Queries**")
-        queries = cfg.get("search_queries", [])
-        for i, q in enumerate(queries):
+        for qi, q in open_queries:
             query_str = q["query"] if isinstance(q, dict) else q
-            col_q, col_interval, col_rm = st.columns([7.8, 1.2, 0.4])
-            col_q.markdown(f"**{query_str}**")
-            with col_interval:
-                interval_options = [10, 15, 30, 60]
-                current_interval = q.get("scan_interval", 15) if isinstance(q, dict) else 15
-                try:
-                    ci = interval_options.index(current_interval)
-                except ValueError:
-                    ci = 1
-                new_interval = st.selectbox(
-                    "Interval", options=interval_options, index=ci,
-                    format_func=lambda x: f"{x}m", key=f"interval_query_{i}",
-                    label_visibility="collapsed",
+            col_icon, col_type, col_name, col_blank, col_cat, col_rm = st.columns([0.4, 0.6, 6, 0.0, 1.2, 0.4])
+            col_icon.markdown("")
+            col_type.markdown("`search`")
+            col_name.markdown(f"**{query_str}**")
+            with col_cat:
+                new_cat = st.selectbox(
+                    "Category", options=["trusted", "open"], index=1,
+                    key=f"cat_query_{qi}", label_visibility="collapsed",
                 )
-                if new_interval != current_interval:
-                    if isinstance(cfg["search_queries"][i], dict):
-                        cfg["search_queries"][i]["scan_interval"] = new_interval
-                    else:
-                        cfg["search_queries"][i] = {"query": query_str, "scan_interval": new_interval}
+                if new_cat != "open":
+                    cfg["search_queries"][qi]["category"] = new_cat
                     save_config(cfg)
                     st.rerun()
             with col_rm:
-                if st.button("✕", key=f"rm_query_{i}", type="primary"):
-                    cfg["search_queries"].pop(i)
+                if st.button("✕", key=f"rm_query_{qi}", type="primary"):
+                    cfg["search_queries"].pop(qi)
                     save_config(cfg)
                     st.rerun()
 
+        st.divider()
+
+        # ── Add Feed ──
+        with st.container():
+            st.markdown("**Add Feed**")
+            af1, af2, af3, af4, af5 = st.columns([1.2, 1.2, 2, 4, 0.6])
+            new_feed_type = af1.selectbox("Type", ["auto", "rss", "web"], key="new_feed_type", label_visibility="collapsed")
+            new_feed_cat = af2.selectbox("Category", ["trusted", "open"], key="new_feed_cat", label_visibility="collapsed")
+            new_feed_name = af3.text_input("Name", key="new_feed_name", label_visibility="collapsed", placeholder="Feed name")
+            new_feed_url = af4.text_input("URL", key="new_feed_url", label_visibility="collapsed", placeholder="https://example.com/feed.xml")
+            with af5:
+                if st.button("Add", key="add_feed", type="primary"):
+                    if new_feed_name and new_feed_url:
+                        entry = {"name": new_feed_name, "url": new_feed_url, "enabled": True, "category": new_feed_cat}
+                        if new_feed_type != "auto":
+                            entry["type"] = new_feed_type
+                        cfg.setdefault("feeds", []).append(entry)
+                        save_config(cfg)
+                        st.rerun()
+
+        # ── Add Search Query ──
         with st.container():
             st.markdown("**Add Search Query**")
-            aq1, aq2 = st.columns([9, 1])
-            new_query = aq1.text_input("Query", key="new_query", label_visibility="collapsed", placeholder="e.g. OpenAI news")
-            with aq2:
+            aq1, aq2, aq3 = st.columns([1.2, 7.2, 0.6])
+            new_query_cat = aq1.selectbox("Category", ["open", "trusted"], key="new_query_cat", label_visibility="collapsed")
+            new_query = aq2.text_input("Query", key="new_query", label_visibility="collapsed", placeholder="e.g. OpenAI news")
+            with aq3:
                 if st.button("Add", key="add_query", type="primary"):
                     if new_query:
-                        cfg.setdefault("search_queries", []).append({"query": new_query, "scan_interval": 15})
+                        cfg.setdefault("search_queries", []).append({"query": new_query, "category": new_query_cat})
                         save_config(cfg)
                         st.rerun()
 

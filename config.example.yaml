@@ -19,29 +19,29 @@ feeds:
   url: https://openai.com/news/
   type: web
   enabled: true
-  scan_interval: 15        # minutes: 10, 15, 30, or 60
+  category: trusted         # trusted (frequent) or open (daily digest)
 - name: OpenAI News RSS
   url: https://openai.com/news/rss.xml
   type: rss
   enabled: false
-  scan_interval: 15
+  category: trusted
 - name: OpenAI Blog RSS
   url: https://openai.com/blog/rss/
   type: rss
   enabled: false
-  scan_interval: 30
+  category: trusted
 - name: OpenAI Blog
   url: https://openai.com/blog/
   type: web
   enabled: false
-  scan_interval: 30
+  category: trusted
 
 # Anthropic
 - name: Anthropic News
   url: https://www.anthropic.com/news
   type: web
   enabled: true
-  scan_interval: 15
+  category: trusted
 - name: Anthropic Newsroom
   url: https://www.anthropic.com/newsroom
   type: web
@@ -242,7 +242,9 @@ feeds:
   url: https://developer.ibm.com/components/watsonx/blogs/
   type: web
   enabled: false
-search_queries: []             # e.g. [{query: "OpenAI news", scan_interval: 15}]
+search_queries: []             # e.g. [{query: "OpenAI news", category: "open"}]
+trusted_interval: 15           # minutes between scans for trusted sources
+open_interval: 1440            # minutes between scans for open sources (1440 = 24h)
 dedup_threshold: 80
 max_search_results: 5
 feed_timeout: 15

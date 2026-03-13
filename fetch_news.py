@@ -51,14 +51,17 @@ def write_last_run_timestamp(timestamp_path: Path):
         f.write(datetime.now().isoformat())
 
 
-def get_due_feeds(feeds: list[dict], db: Database) -> list[dict]:
-    """Return only feeds whose scan interval has elapsed since their last scan."""
+def get_due_feeds(feeds: list[dict], cfg: dict, db: Database) -> list[dict]:
+    """Return only feeds whose category interval has elapsed since their last scan."""
     now = datetime.now()
+    trusted_interval = cfg.get("trusted_interval", 15)
+    open_interval = cfg.get("open_interval", 1440)
     due = []
     for feed in feeds:
         if not feed.get("enabled", True):
             continue
-        interval_minutes = feed.get("scan_interval", 15)
+        category = feed.get("category", "trusted")
+        interval_minutes = trusted_interval if category == "trusted" else open_interval
         last_scanned_str = db.get_feed_last_scanned(feed["name"])
         if last_scanned_str:
             last_scanned = datetime.fromisoformat(last_scanned_str)
@@ -69,12 +72,15 @@ def get_due_feeds(feeds: list[dict], db: Database) -> list[dict]:
     return due
 
 
-def get_due_queries(queries: list[dict], db: Database) -> list[dict]:
-    """Return only search queries whose scan interval has elapsed."""
+def get_due_queries(queries: list[dict], cfg: dict, db: Database) -> list[dict]:
+    """Return only search queries whose category interval has elapsed."""
     now = datetime.now()
+    trusted_interval = cfg.get("trusted_interval", 15)
+    open_interval = cfg.get("open_interval", 1440)
     due = []
     for q in queries:
-        interval_minutes = q.get("scan_interval", 15)
+        category = q.get("category", "open")
+        interval_minutes = trusted_interval if category == "trusted" else open_interval
         last_scanned_str = db.get_feed_last_scanned(f"search:{q['query']}")
         if last_scanned_str:
             last_scanned = datetime.fromisoformat(last_scanned_str)
@@ -112,7 +118,7 @@ def main():
     db = Database(cfg["db_path"])
 
     # 3. Fetch RSS feeds (only those due for scanning)
-    due_feeds = get_due_feeds(cfg["feeds"], db)
+    due_feeds = get_due_feeds(cfg["feeds"], cfg, db)
     enabled_count = sum(1 for f in cfg["feeds"] if f.get("enabled", True))
     logger.info(f"\n[3/8] Fetching RSS feeds ({len(due_feeds)}/{enabled_count} feeds due)...")
     rss_items = fetch_all_feeds(
@@ -129,7 +135,7 @@ def main():
 
     # 4. Search DuckDuckGo (only queries due for scanning)
     all_queries = cfg["search_queries"]
-    due_queries = get_due_queries(all_queries, db)
+    due_queries = get_due_queries(all_queries, cfg, db)
     logger.info(f"\n[4/8] Searching DuckDuckGo ({len(due_queries)}/{len(all_queries)} queries due)...")
     search_items = search_all_queries(
         due_queries,
