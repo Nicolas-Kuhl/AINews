@@ -291,12 +291,13 @@ echo "Starting Nginx..."
 sudo systemctl enable nginx
 sudo systemctl restart nginx
 
-# Create cron job for fetch pipeline
-# Runs every 15 minutes — trusted sources are checked each run,
-# open sources are checked but skipped until their 24h interval elapses.
-# The pipeline's get_due_feeds/get_due_queries handles per-category filtering.
-(crontab -l 2>/dev/null || echo ""; echo "# AI News Aggregator - Run pipeline every 15 minutes (trusted=frequent, open=24h digest)") | crontab -
-(crontab -l; echo "*/15 * * * * cd $APP_DIR && $APP_DIR/venv/bin/python fetch_news.py >> $APP_DIR/data/pipeline.log 2>&1") | crontab -
+# Create cron jobs for fetch pipeline
+# Trusted sources: every 15 minutes
+# Open sources: once daily at 18:00 UTC (5am AEDT / 4am AEST)
+(crontab -l 2>/dev/null || echo ""; echo "# AI News Aggregator — trusted sources every 15 min") | crontab -
+(crontab -l; echo "*/15 * * * * cd $APP_DIR && $APP_DIR/venv/bin/python fetch_news.py --category trusted >> $APP_DIR/data/pipeline.log 2>&1") | crontab -
+(crontab -l; echo "# AI News Aggregator — open sources daily at 5am AEDT (18:00 UTC)") | crontab -
+(crontab -l; echo "0 18 * * * cd $APP_DIR && $APP_DIR/venv/bin/python fetch_news.py --category open >> $APP_DIR/data/pipeline.log 2>&1") | crontab -
 
 # Start dashboard service
 sudo systemctl daemon-reload

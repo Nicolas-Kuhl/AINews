@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """AI News Aggregator — fetch, process, and store pipeline."""
 
+import argparse
 import sys
 import logging
 from logging.handlers import TimedRotatingFileHandler
@@ -92,6 +93,14 @@ def get_due_queries(queries: list[dict], cfg: dict, db: Database) -> list[dict]:
 
 
 def main():
+    parser = argparse.ArgumentParser(description="AI News Aggregator — fetch pipeline")
+    parser.add_argument(
+        "--category", choices=["trusted", "open"],
+        help="Only process sources of this category (default: all)",
+    )
+    args = parser.parse_args()
+    category_filter = args.category
+
     # Load config first to get data directory path
     cfg = load_config()
     data_dir = Path(cfg.get("db_path", "data/ainews.db")).parent
@@ -100,8 +109,9 @@ def main():
     logger = setup_logging(data_dir / "pipeline.log")
 
     start_time = datetime.now()
+    label = f" ({category_filter} only)" if category_filter else ""
     logger.info("\n" + "=" * 60)
-    logger.info("AI News Aggregator — Fetch Pipeline")
+    logger.info(f"AI News Aggregator — Fetch Pipeline{label}")
     logger.info(f"Started: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
     logger.info("=" * 60)
 
@@ -117,9 +127,16 @@ def main():
     logger.info("[2/8] Initializing database...")
     db = Database(cfg["db_path"])
 
+    # Filter feeds and queries by category if specified
+    feeds = cfg["feeds"]
+    all_queries = cfg["search_queries"]
+    if category_filter:
+        feeds = [f for f in feeds if f.get("category", "trusted") == category_filter]
+        all_queries = [q for q in all_queries if q.get("category", "open") == category_filter]
+
     # 3. Fetch RSS feeds (only those due for scanning)
-    due_feeds = get_due_feeds(cfg["feeds"], cfg, db)
-    enabled_count = sum(1 for f in cfg["feeds"] if f.get("enabled", True))
+    due_feeds = get_due_feeds(feeds, cfg, db)
+    enabled_count = sum(1 for f in feeds if f.get("enabled", True))
     logger.info(f"\n[3/8] Fetching RSS feeds ({len(due_feeds)}/{enabled_count} feeds due)...")
     rss_items = fetch_all_feeds(
         due_feeds,
@@ -134,7 +151,6 @@ def main():
         db.update_feed_last_scanned(feed["name"], scan_time)
 
     # 4. Search DuckDuckGo (only queries due for scanning)
-    all_queries = cfg["search_queries"]
     due_queries = get_due_queries(all_queries, cfg, db)
     logger.info(f"\n[4/8] Searching DuckDuckGo ({len(due_queries)}/{len(all_queries)} queries due)...")
     search_items = search_all_queries(
