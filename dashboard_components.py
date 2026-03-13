@@ -723,7 +723,7 @@ def _render_settings_tab(cfg, db, project_root):
 
         for qi, q in trusted_queries:
             query_str = q["query"] if isinstance(q, dict) else q
-            col_icon, col_type, col_name, col_blank, col_cat, col_rm = st.columns([0.4, 0.6, 6, 0.0, 1.2, 0.4])
+            col_icon, col_type, col_name, col_cat, col_rm = st.columns([0.4, 0.6, 6, 1.2, 0.4])
             col_icon.markdown("")
             col_type.markdown("`search`")
             col_name.markdown(f"**{query_str}**")
@@ -784,7 +784,7 @@ def _render_settings_tab(cfg, db, project_root):
 
         for qi, q in open_queries:
             query_str = q["query"] if isinstance(q, dict) else q
-            col_icon, col_type, col_name, col_blank, col_cat, col_rm = st.columns([0.4, 0.6, 6, 0.0, 1.2, 0.4])
+            col_icon, col_type, col_name, col_cat, col_rm = st.columns([0.4, 0.6, 6, 1.2, 0.4])
             col_icon.markdown("")
             col_type.markdown("`search`")
             col_name.markdown(f"**{query_str}**")
