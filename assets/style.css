@@ -243,7 +243,7 @@ hr {
 .stButton > button[kind="primary"],
 .stButton > button[kind="primary"]:focus {
     background-color: var(--accent) !important;
-    color: var(--text-inverted) !important;
+    color: #ffffff !important;
     border: none !important;
     border-radius: var(--radius-md) !important;
     padding: 0.35rem 0.85rem !important;
@@ -255,12 +255,13 @@ hr {
 
 .stButton > button[kind="primary"]:hover {
     background-color: var(--accent-hover) !important;
-    color: var(--text-inverted) !important;
+    color: #ffffff !important;
 }
 
 .stButton > button[kind="primary"] p,
 .stButton > button[kind="primary"] span,
 .stButton > button[kind="primary"] div {
+    color: #ffffff !important;
     font-size: 0.8rem !important;
 }
 
