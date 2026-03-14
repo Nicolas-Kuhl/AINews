@@ -380,6 +380,14 @@ input[type="text"]:focus, textarea:focus {
 .score-num-sm.mid  { color: var(--score-mid); }
 .score-num-sm.low  { color: var(--score-low); }
 
+/* ---- Digest ---- */
+.digest-summary {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    margin-top: 0.3rem;
+    line-height: 1.5;
+}
+
 /* ---- Date ---- */
 .date-mono {
     font-family: var(--font-mono);

@@ -413,8 +413,8 @@ def _render_digest(days_data: dict, db_path: str, cfg: dict):
 
         st.markdown(
             f'<div style="margin:1.5rem 0 0.5rem 0;padding:0.5rem 0;border-bottom:1px solid var(--border);">'
-            f'<span style="font-size:1.1rem;font-weight:600;">{day_label}</span>'
-            f'<span style="font-size:0.75rem;color:var(--text-muted);margin-left:1rem;">'
+            f'<span style="font-size:1.25rem;font-weight:600;">{day_label}</span>'
+            f'<span style="font-size:0.85rem;color:var(--text-muted);margin-left:1rem;">'
             f'{item_count} items</span>'
             f'</div>',
             unsafe_allow_html=True,
@@ -435,19 +435,19 @@ def _render_digest_item(primary, related):
 
     score_html = f'<span class="score-num {score_class}">{primary.score}</span>'
 
-    title_html = f'<a href="{primary.url}" target="_blank" style="font-weight:500;">{primary.title}</a>'
+    title_html = f'<a href="{primary.url}" target="_blank" style="font-weight:500;font-size:1.05rem;">{primary.title}</a>'
     if related:
         title_html += f' <span class="related-count">+{len(related)}</span>'
 
     summary = primary.summary or ""
 
     st.markdown(
-        f'<div style="margin:0.4rem 0;padding:0.5rem 0;border-bottom:1px solid var(--border-light, rgba(128,128,128,0.1));">'
+        f'<div style="margin:0.5rem 0;padding:0.6rem 0;border-bottom:1px solid var(--border-light, rgba(128,128,128,0.1));">'
         f'<div style="display:flex;align-items:baseline;gap:0.75rem;">'
         f'{score_html}'
         f'<div style="flex:1;">'
         f'<div>{title_html}</div>'
-        f'<div style="font-size:0.8rem;color:var(--text-muted);margin-top:0.25rem;line-height:1.4;">{summary}</div>'
+        f'<div class="digest-summary">{summary}</div>'
         f'</div>'
         f'</div>'
         f'</div>',
