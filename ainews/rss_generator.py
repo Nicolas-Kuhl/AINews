@@ -2,19 +2,27 @@
 
 from datetime import datetime, timezone
 from email.utils import formatdate
+from pathlib import Path
 from typing import List
 from xml.sax.saxutils import escape
 
 from ainews.models import ProcessedNewsItem
 
 
-def generate_rss_feed(items: List[ProcessedNewsItem], min_score: int = 8) -> str:
+def generate_rss_feed(
+    items: List[ProcessedNewsItem],
+    min_score: int = 8,
+    title: str = "AI News Aggregator - High Priority",
+    description: str = "High-priority AI news items",
+) -> str:
     """
     Generate an RSS 2.0 feed from news items.
 
     Args:
         items: List of ProcessedNewsItem objects to include
         min_score: Minimum score threshold (default: 8)
+        title: Feed title
+        description: Feed description
 
     Returns:
         RSS feed as XML string
@@ -45,12 +53,11 @@ def generate_rss_feed(items: List[ProcessedNewsItem], min_score: int = 8) -> str
         '<?xml version="1.0" encoding="UTF-8" ?>',
         '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">',
         '<channel>',
-        f'<title>AI News Aggregator - High Priority (Score {min_score}+)</title>',
+        f'<title>{escape(title)} (Score {min_score}+)</title>',
         '<link>https://github.com/yourusername/ainews</link>',
-        '<description>High-priority AI news items rated 8 or above</description>',
+        f'<description>{escape(description)}</description>',
         '<language>en-us</language>',
         f'<lastBuildDate>{formatdate(datetime.now().timestamp())}</lastBuildDate>',
-        '<atom:link href="https://yourdomain.com/rss/high-priority.xml" rel="self" type="application/rss+xml" />',
     ]
 
     # Add items
@@ -100,28 +107,67 @@ def _item_to_rss(item: ProcessedNewsItem) -> List[str]:
     ]
 
 
-def save_rss_feed(db, output_path: str, min_score: int = 8):
+def save_rss_feed(
+    db,
+    output_path: str,
+    min_score: int = 8,
+    trusted_sources: List[str] | None = None,
+):
     """
-    Generate and save RSS feed to a file.
+    Generate and save RSS feeds.  When *trusted_sources* is provided, three
+    files are written:
+      - <output_path>               combined feed (all sources)
+      - <stem>_trusted<suffix>      trusted / official sources only
+      - <stem>_digest<suffix>       open / digest sources only
 
     Args:
         db: Database instance
-        output_path: Path to save RSS XML file
+        output_path: Path to save the combined RSS XML file
         min_score: Minimum score threshold (default: 8)
+        trusted_sources: Set of source names considered "trusted"
+
+    Returns:
+        Number of items in the combined feed.
     """
     # Query all unacknowledged items
     items = db.query(
         min_score=min_score,
         show_acknowledged=False,
         sort_by="published",
-        sort_dir="DESC"
+        sort_dir="DESC",
     )
 
-    # Generate RSS XML
+    # --- combined feed (unchanged behaviour) ---
     rss_xml = generate_rss_feed(items, min_score=min_score)
-
-    # Write to file
-    with open(output_path, 'w', encoding='utf-8') as f:
+    with open(output_path, "w", encoding="utf-8") as f:
         f.write(rss_xml)
+
+    # --- category feeds ---
+    if trusted_sources is not None:
+        trusted_set = set(trusted_sources)
+        trusted_items = [i for i in items if i.source in trusted_set]
+        digest_items = [i for i in items if i.source not in trusted_set]
+
+        base = Path(output_path)
+        trusted_path = base.with_name(f"{base.stem}_trusted{base.suffix}")
+        digest_path = base.with_name(f"{base.stem}_digest{base.suffix}")
+
+        trusted_xml = generate_rss_feed(
+            trusted_items,
+            min_score=min_score,
+            title="AI News — Official Sources",
+            description="Breaking news from official AI vendor channels",
+        )
+        with open(trusted_path, "w", encoding="utf-8") as f:
+            f.write(trusted_xml)
+
+        digest_xml = generate_rss_feed(
+            digest_items,
+            min_score=min_score,
+            title="AI News — Daily Digest",
+            description="Curated AI news from across the web (updated daily)",
+        )
+        with open(digest_path, "w", encoding="utf-8") as f:
+            f.write(digest_xml)
 
     return len([item for item in items if item.score >= min_score])

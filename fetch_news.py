@@ -283,18 +283,27 @@ def main():
 
 
 def _generate_rss_feed(db, cfg, logger):
-    """Generate RSS feed for high-priority items."""
-    # Get output path from config or use default
+    """Generate RSS feeds (combined + trusted/digest splits)."""
     output_path = cfg.get("rss_output_path", "data/high_priority.xml")
     min_score = cfg.get("rss_min_score", 8)
 
-    # Ensure directory exists
     output_file = Path(output_path)
     output_file.parent.mkdir(parents=True, exist_ok=True)
 
-    # Generate RSS feed
-    rss_count = save_rss_feed(db, str(output_file), min_score=min_score)
-    logger.info(f"  RSS feed generated: {output_path} ({rss_count} items)")
+    # Build list of trusted source names from config
+    trusted_sources = [
+        f["name"]
+        for f in cfg.get("feeds", [])
+        if f.get("category") == "trusted" and f.get("enabled", True)
+    ]
+
+    rss_count = save_rss_feed(
+        db, str(output_file), min_score=min_score,
+        trusted_sources=trusted_sources,
+    )
+    logger.info(f"  RSS feeds generated: {output_path} ({rss_count} items)")
+    logger.info(f"    + {output_file.stem}_trusted{output_file.suffix}")
+    logger.info(f"    + {output_file.stem}_digest{output_file.suffix}")
 
     return rss_count
 
