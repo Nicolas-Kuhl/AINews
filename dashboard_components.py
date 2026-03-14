@@ -388,11 +388,8 @@ def _render_learning_objectives(primary, cfg, db):
 
 @st.fragment
 def _render_digest(days_data: dict, db_path: str, cfg: dict):
-    """Render daily digest view — items grouped by day, sorted by score within each day."""
+    """Render daily digest view — score, linked title, and summary for each item."""
     from datetime import datetime
-    from ainews.storage.database import Database
-
-    db = Database(db_path)
 
     if not days_data:
         st.markdown(
@@ -413,90 +410,49 @@ def _render_digest(days_data: dict, db_path: str, cfg: dict):
             day_label = day_str
 
         item_count = sum(1 + len(related) for _, related in grouped_items)
-        top_score = max((p.score for p, _ in grouped_items), default=0)
 
         st.markdown(
             f'<div style="margin:1.5rem 0 0.5rem 0;padding:0.5rem 0;border-bottom:1px solid var(--border);">'
             f'<span style="font-size:1.1rem;font-weight:600;">{day_label}</span>'
             f'<span style="font-size:0.75rem;color:var(--text-muted);margin-left:1rem;">'
-            f'{item_count} items · top score {top_score}</span>'
+            f'{item_count} items</span>'
             f'</div>',
             unsafe_allow_html=True,
         )
 
-        # Table header
-        with st.container():
-            h_cols = st.columns([0.4, 0.5, 5.5, 1.8, 1.2, 0.8])
-            h_cols[1].markdown('<span class="date-mono" style="font-size:0.65rem;letter-spacing:0.06em;opacity:0.5;">SCORE</span>', unsafe_allow_html=True)
-            h_cols[2].markdown('<span class="date-mono" style="font-size:0.65rem;letter-spacing:0.06em;opacity:0.5;">TITLE</span>', unsafe_allow_html=True)
-            h_cols[3].markdown('<span class="date-mono" style="font-size:0.65rem;letter-spacing:0.06em;opacity:0.5;">SOURCE</span>', unsafe_allow_html=True)
-            h_cols[4].markdown('<span class="date-mono" style="font-size:0.65rem;letter-spacing:0.06em;opacity:0.5;">CATEGORY</span>', unsafe_allow_html=True)
-            h_cols[5].markdown("")
-
         for primary, related in grouped_items:
-            _render_digest_item(primary, related, db, cfg)
+            _render_digest_item(primary, related)
 
 
-def _render_digest_item(primary, related, db, cfg):
-    """Render a single digest item row with expandable details."""
-    expand_key = f"digest_expand_{primary.id}"
-    is_expanded = st.session_state.get(expand_key, False)
+def _render_digest_item(primary, related):
+    """Render a digest item: score, linked title, and summary."""
+    if primary.score >= 8:
+        score_class = "high"
+    elif primary.score >= 5:
+        score_class = "mid"
+    else:
+        score_class = "low"
 
-    ack_pending_key = f"digest_ack_pending_{primary.id}"
-    if st.session_state.get(ack_pending_key, False):
-        db.acknowledge(primary.id)
-        for rel in related:
-            if rel.id:
-                db.acknowledge(rel.id)
-        st.session_state.pop(ack_pending_key, None)
-        return
+    score_html = f'<span class="score-num {score_class}">{primary.score}</span>'
 
-    with st.container():
-        cols = st.columns([0.4, 0.5, 5.5, 1.8, 1.2, 0.8])
+    title_html = f'<a href="{primary.url}" target="_blank" style="font-weight:500;">{primary.title}</a>'
+    if related:
+        title_html += f' <span class="related-count">+{len(related)}</span>'
 
-        with cols[0]:
-            arrow = "▾" if is_expanded else "▸"
-            if st.button(arrow, key=f"digest_toggle_{primary.id}"):
-                st.session_state[expand_key] = not is_expanded
-                st.rerun(scope="fragment")
+    summary = primary.summary or ""
 
-        if primary.score >= 8:
-            score_class = "high"
-        elif primary.score >= 5:
-            score_class = "mid"
-        else:
-            score_class = "low"
-
-        cols[1].markdown(
-            f'<span class="score-num {score_class}">{primary.score}</span>',
-            unsafe_allow_html=True
-        )
-
-        title_md = f"[{primary.title}]({primary.url})"
-        if related:
-            title_md += f' <span class="related-count">+{len(related)}</span>'
-        cols[2].markdown(title_md, unsafe_allow_html=True)
-
-        cols[3].caption(primary.source)
-
-        cols[4].markdown(
-            f'<span style="font-size:0.75rem;color:var(--text-muted);">{primary.category}</span>',
-            unsafe_allow_html=True
-        )
-
-        with cols[5]:
-            if not primary.acknowledged:
-                if st.button("✓", key=f"digest_ack_{primary.id}"):
-                    st.session_state[ack_pending_key] = True
-                    st.cache_data.clear()
-                    st.rerun(scope="fragment")
-            else:
-                st.markdown('<span style="color:var(--text-muted);font-size:0.8rem;">✓</span>', unsafe_allow_html=True)
-
-    if is_expanded:
-        _, detail_col = st.columns([0.9, 9.3])
-        with detail_col:
-            _render_item_details(primary, related, db, cfg)
+    st.markdown(
+        f'<div style="margin:0.4rem 0;padding:0.5rem 0;border-bottom:1px solid var(--border-light, rgba(128,128,128,0.1));">'
+        f'<div style="display:flex;align-items:baseline;gap:0.75rem;">'
+        f'{score_html}'
+        f'<div style="flex:1;">'
+        f'<div>{title_html}</div>'
+        f'<div style="font-size:0.8rem;color:var(--text-muted);margin-top:0.25rem;line-height:1.4;">{summary}</div>'
+        f'</div>'
+        f'</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
 
 def _render_settings_tab(cfg, db, project_root):
