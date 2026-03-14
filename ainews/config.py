@@ -38,6 +38,18 @@ def load_config(path: Path = CONFIG_PATH) -> dict:
     cfg.setdefault("trusted_interval", 15)
     cfg.setdefault("open_interval", 1440)
 
+    # Newsletter defaults
+    nl = cfg.setdefault("newsletters", {"enabled": False, "senders": []})
+    nl.setdefault("enabled", False)
+    nl.setdefault("imap_host", "imap.gmail.com")
+    nl.setdefault("imap_port", 993)
+    nl.setdefault("max_emails_per_run", 50)
+    nl.setdefault("senders", [])
+    # Env var override for email password (avoid plaintext in config on server)
+    env_pw = os.environ.get("AINEWS_EMAIL_PASSWORD")
+    if env_pw:
+        nl["password"] = env_pw
+
     # Normalize feeds: ensure category field, migrate from scan_interval if needed
     for feed in cfg["feeds"]:
         if "category" not in feed:

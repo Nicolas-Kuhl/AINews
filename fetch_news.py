@@ -168,8 +168,17 @@ def main():
     for q in due_queries:
         db.update_feed_last_scanned(f"search:{q['query']}", query_scan_time)
 
+    # 4b. Fetch newsletter emails (only on open/daily schedule)
+    email_items = []
+    nl_cfg = cfg.get("newsletters", {})
+    if nl_cfg.get("enabled") and (not category_filter or category_filter == "open"):
+        logger.info("\n[4b] Checking newsletter emails...")
+        from ainews.fetchers.email_fetcher import fetch_all_newsletters
+        email_items = fetch_all_newsletters(cfg, db)
+        logger.info(f"  Total email items: {len(email_items)}")
+
     # 5. Combine and deduplicate (against batch + existing DB items)
-    combined = rss_items + search_items
+    combined = rss_items + search_items + email_items
     logger.info(f"\n[5/8] Deduplicating {len(combined)} items...")
     existing_titles = db.get_all_titles()
     existing_urls = db.get_all_normalized_urls()

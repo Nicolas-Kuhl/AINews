@@ -251,3 +251,19 @@ feed_timeout: 15
 max_items_per_feed: 20
 scoring_batch_size: 20
 db_path: data/ainews.db
+
+# Newsletter email ingestion (runs on open/daily schedule)
+newsletters:
+  enabled: false
+  imap_host: imap.gmail.com
+  imap_port: 993
+  email: your-newsletters@gmail.com
+  password: xxxx-xxxx-xxxx-xxxx    # Gmail App Password (or set AINEWS_EMAIL_PASSWORD env var)
+  max_emails_per_run: 50
+  senders:
+    - name: "The Batch (Andrew Ng)"
+      address: "deeplearning@deeplearning.ai"
+    - name: "TLDR AI"
+      address: "dan@tldrnewsletter.com"
+    - name: "Import AI"
+      address: "jack@jack-clark.net"

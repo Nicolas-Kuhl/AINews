@@ -49,6 +49,16 @@ CREATE TABLE IF NOT EXISTS feed_scans (
 );
 """
 
+SCHEMA_PROCESSED_EMAILS = """
+CREATE TABLE IF NOT EXISTS processed_emails (
+    message_id TEXT PRIMARY KEY,
+    sender TEXT NOT NULL,
+    subject TEXT,
+    processed_at TEXT NOT NULL,
+    stories_extracted INTEGER DEFAULT 0
+);
+"""
+
 
 class Database:
     def __init__(self, db_path: str):
@@ -115,6 +125,8 @@ class Database:
         self.conn.execute(SCHEMA_PROCESSED_AT_INDEX)
         # Create feed_scans table for per-feed scan interval tracking
         self.conn.executescript(SCHEMA_FEED_SCANS)
+        # Create processed_emails table for newsletter dedup
+        self.conn.executescript(SCHEMA_PROCESSED_EMAILS)
         self.conn.commit()
 
     def get_feed_last_scanned(self, feed_name: str) -> Optional[str]:
@@ -130,6 +142,24 @@ class Database:
         self.conn.execute(
             "INSERT OR REPLACE INTO feed_scans (feed_name, last_scanned) VALUES (?, ?)",
             (feed_name, timestamp),
+        )
+        self.conn.commit()
+
+    def is_email_processed(self, message_id: str) -> bool:
+        """Check if a newsletter email has already been processed."""
+        row = self.conn.execute(
+            "SELECT 1 FROM processed_emails WHERE message_id = ?",
+            (message_id,),
+        ).fetchone()
+        return row is not None
+
+    def mark_email_processed(
+        self, message_id: str, sender: str, subject: str, stories_count: int
+    ):
+        """Record that a newsletter email has been processed."""
+        self.conn.execute(
+            "INSERT OR REPLACE INTO processed_emails (message_id, sender, subject, processed_at, stories_extracted) VALUES (?, ?, ?, ?, ?)",
+            (message_id, sender, subject, datetime.now().isoformat(), stories_count),
         )
         self.conn.commit()
 
