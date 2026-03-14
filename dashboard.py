@@ -8,7 +8,7 @@ import yaml
 
 from ainews.config import load_config
 from ainews.storage.database import Database
-from dashboard_components import _render_news_list, _render_settings_tab, load_css
+from dashboard_components import _render_news_list, _render_digest, _render_settings_tab, load_css
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 
@@ -18,6 +18,19 @@ def get_grouped_items(db_path: str, category: str, **filter_kwargs):
     """Cached database query for grouped items."""
     db = Database(db_path)
     result = db.query_grouped(category=category, **filter_kwargs)
+    db.close()
+    return result
+
+
+@st.cache_data(ttl=60)
+def get_digest_items(db_path: str, min_score: int, max_score: int, show_acknowledged: bool, limit_days: int, start_date=None, end_date=None):
+    """Cached database query for daily digest view."""
+    db = Database(db_path)
+    result = db.query_by_day(
+        min_score=min_score, max_score=max_score,
+        show_acknowledged=show_acknowledged, limit_days=limit_days,
+        start_date=start_date, end_date=end_date,
+    )
     db.close()
     return result
 
@@ -201,7 +214,7 @@ def main():
 
     # Tabs — dynamic from config categories
     categories = cfg.get("categories", ["New Releases", "Research", "Business", "Developer Tools"])
-    tab_names = categories + ["Settings", "About"]
+    tab_names = ["Daily Digest"] + categories + ["Settings", "About"]
     tabs = st.tabs(tab_names)
 
     # Prepare filter arguments
@@ -221,9 +234,51 @@ def main():
         sort_dir=sort_dir,
     )
 
+    # Daily Digest tab
+    with tabs[0]:
+        digest_data = get_digest_items(
+            cfg["db_path"],
+            min_score=score_range[0],
+            max_score=score_range[1],
+            show_acknowledged=show_acknowledged,
+            limit_days=30,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        # Apply search filter
+        if search_query:
+            query_lower = search_query.lower()
+            filtered_digest = {}
+            for day, grouped_items in digest_data.items():
+                filtered = []
+                for primary, related in grouped_items:
+                    if (query_lower in primary.title.lower() or
+                        (primary.summary and query_lower in primary.summary.lower())):
+                        filtered.append((primary, related))
+                        continue
+                    for item in related:
+                        if (query_lower in item.title.lower() or
+                            (item.summary and query_lower in item.summary.lower())):
+                            filtered.append((primary, related))
+                            break
+                if filtered:
+                    filtered_digest[day] = filtered
+            digest_data = filtered_digest
+
+        total_items = sum(
+            sum(1 + len(rel) for _, rel in items)
+            for items in digest_data.values()
+        )
+        st.markdown(
+            f'<p style="font-size:0.75rem;color:var(--text-muted);margin:0.5rem 0;">'
+            f'{total_items} items across {len(digest_data)} days</p>',
+            unsafe_allow_html=True,
+        )
+        _render_digest(digest_data, cfg["db_path"], cfg)
+
     # Category tabs (dynamic)
     for i, category in enumerate(categories):
-        with tabs[i]:
+        with tabs[i + 1]:
             grouped = get_grouped_items(cfg["db_path"], category, **filter_kwargs)
             grouped = filter_grouped_items(grouped, search_query)
             st.markdown(

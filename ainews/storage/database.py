@@ -424,6 +424,84 @@ class Database:
             limit=limit,
         )
 
+    def query_by_day(
+        self,
+        min_score: int = 0,
+        max_score: int = 10,
+        show_acknowledged: bool = False,
+        limit_days: int = 30,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+    ) -> dict[str, list[tuple[ProcessedNewsItem, list[ProcessedNewsItem]]]]:
+        """Query items grouped by day (published date), then grouped by group_id within each day.
+
+        Returns an ordered dict of {date_str: [(primary, [related]), ...]} sorted by
+        date descending, items within each day sorted by score descending.
+        """
+        from collections import OrderedDict
+
+        sql = "SELECT * FROM news_items WHERE score >= ? AND score <= ?"
+        params: list = [min_score, max_score]
+
+        if not show_acknowledged:
+            sql += " AND acknowledged = 0"
+
+        if start_date:
+            sql += " AND published >= ?"
+            params.append(start_date.isoformat())
+
+        if end_date:
+            sql += " AND published <= ?"
+            params.append(end_date.isoformat())
+
+        sql += " ORDER BY published DESC, score DESC"
+
+        rows = self.conn.execute(sql, params).fetchall()
+        items = [self._row_to_item(r) for r in rows]
+
+        # Bucket items by day
+        day_buckets: dict[str, list[ProcessedNewsItem]] = {}
+        for item in items:
+            if item.published:
+                day_key = item.published.strftime("%Y-%m-%d")
+            else:
+                day_key = "Unknown"
+            day_buckets.setdefault(day_key, []).append(item)
+
+        # Sort days descending, limit
+        sorted_days = sorted(day_buckets.keys(), reverse=True)[:limit_days]
+
+        result: OrderedDict[str, list[tuple[ProcessedNewsItem, list[ProcessedNewsItem]]]] = OrderedDict()
+        for day in sorted_days:
+            day_items = day_buckets[day]
+            # Sort by score descending within each day
+            day_items.sort(key=lambda x: x.score, reverse=True)
+
+            # Group by group_id
+            groups: dict[int, list[ProcessedNewsItem]] = {}
+            ungrouped: list[ProcessedNewsItem] = []
+            for item in day_items:
+                if item.group_id is not None:
+                    groups.setdefault(item.group_id, []).append(item)
+                else:
+                    ungrouped.append(item)
+
+            grouped_list: list[tuple[ProcessedNewsItem, list[ProcessedNewsItem]]] = []
+            seen_groups: set[int] = set()
+            for item in day_items:
+                if item.group_id is not None:
+                    if item.group_id in seen_groups:
+                        continue
+                    seen_groups.add(item.group_id)
+                    members = groups[item.group_id]
+                    grouped_list.append((members[0], members[1:]))
+                else:
+                    grouped_list.append((item, []))
+
+            result[day] = grouped_list
+
+        return result
+
     def get_all_sources(self) -> list[str]:
         rows = self.conn.execute(
             "SELECT DISTINCT source FROM news_items ORDER BY source"
