@@ -129,12 +129,11 @@ def save_rss_feed(
     Returns:
         Number of items in the combined feed.
     """
-    # Query items — use the lower of min_score and digest threshold so we
-    # have enough items for the digest feed (score 7+).
+    # Query items — use score 0 so we have all items available for the
+    # trusted feed (no threshold) and digest feed (score 7+).
     digest_min = 7
-    query_floor = min(min_score, digest_min)
     items = db.query(
-        min_score=query_floor,
+        min_score=0,
         show_acknowledged=False,
         sort_by="published",
         sort_dir="DESC",
@@ -157,7 +156,7 @@ def save_rss_feed(
 
         trusted_xml = generate_rss_feed(
             trusted_items,
-            min_score=min_score,
+            min_score=0,
             title="AI News — Official Sources",
             description="Breaking news from official AI vendor channels",
         )
