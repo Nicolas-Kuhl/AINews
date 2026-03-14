@@ -129,9 +129,12 @@ def save_rss_feed(
     Returns:
         Number of items in the combined feed.
     """
-    # Query all unacknowledged items
+    # Query items — use the lower of min_score and digest threshold so we
+    # have enough items for the digest feed (score 7+).
+    digest_min = 7
+    query_floor = min(min_score, digest_min)
     items = db.query(
-        min_score=min_score,
+        min_score=query_floor,
         show_acknowledged=False,
         sort_by="published",
         sort_dir="DESC",
@@ -163,7 +166,7 @@ def save_rss_feed(
 
         digest_xml = generate_rss_feed(
             digest_items,
-            min_score=min_score,
+            min_score=digest_min,
             title="AI News — Daily Digest",
             description="Curated AI news from across the web (updated daily)",
         )
