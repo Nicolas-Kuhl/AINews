@@ -643,6 +643,105 @@ def _render_settings_tab(cfg, db, project_root):
                 else:
                     st.info(f"No unacknowledged items found with score below {ack_score}.")
 
+    # ── Newsletters ──
+    with st.expander("Newsletters", expanded=False):
+        nl_cfg = cfg.setdefault("newsletters", {"enabled": False, "senders": []})
+
+        nl_enabled = st.toggle(
+            "Enable newsletter ingestion",
+            value=nl_cfg.get("enabled", False),
+            help="Fetch stories from email newsletters via IMAP (runs on daily/open schedule).",
+            key="nl_enabled_toggle",
+        )
+        if nl_enabled != nl_cfg.get("enabled", False):
+            nl_cfg["enabled"] = nl_enabled
+            save_config(cfg)
+            st.rerun()
+
+        if nl_enabled:
+            st.markdown("**Email Account**")
+            nl_col1, nl_col2 = st.columns(2)
+            with nl_col1:
+                nl_email = st.text_input(
+                    "Email address", value=nl_cfg.get("email", ""),
+                    key="nl_email_input", placeholder="newsletters@gmail.com",
+                )
+                if nl_email != nl_cfg.get("email", ""):
+                    nl_cfg["email"] = nl_email
+                    save_config(cfg)
+            with nl_col2:
+                nl_password = st.text_input(
+                    "App password", value=nl_cfg.get("password", ""),
+                    key="nl_password_input", type="password",
+                    help="Gmail App Password. Can also be set via AINEWS_EMAIL_PASSWORD env var.",
+                )
+                if nl_password != nl_cfg.get("password", ""):
+                    nl_cfg["password"] = nl_password
+                    save_config(cfg)
+
+            st.markdown("**IMAP Settings**")
+            imap_col1, imap_col2, imap_col3 = st.columns(3)
+            with imap_col1:
+                nl_host = st.text_input(
+                    "IMAP host", value=nl_cfg.get("imap_host", "imap.gmail.com"),
+                    key="nl_imap_host",
+                )
+                if nl_host != nl_cfg.get("imap_host", "imap.gmail.com"):
+                    nl_cfg["imap_host"] = nl_host
+                    save_config(cfg)
+            with imap_col2:
+                nl_port = st.number_input(
+                    "IMAP port", value=nl_cfg.get("imap_port", 993),
+                    min_value=1, max_value=65535, key="nl_imap_port",
+                )
+                if nl_port != nl_cfg.get("imap_port", 993):
+                    nl_cfg["imap_port"] = int(nl_port)
+                    save_config(cfg)
+            with imap_col3:
+                nl_max = st.number_input(
+                    "Max emails per run", value=nl_cfg.get("max_emails_per_run", 50),
+                    min_value=1, max_value=500, key="nl_max_emails",
+                )
+                if nl_max != nl_cfg.get("max_emails_per_run", 50):
+                    nl_cfg["max_emails_per_run"] = int(nl_max)
+                    save_config(cfg)
+
+            st.divider()
+
+            st.markdown("**Newsletter Senders**")
+            st.caption("Emails from these senders will be processed for news stories.")
+            senders = nl_cfg.get("senders", [])
+
+            for si, sender in enumerate(senders):
+                s_col1, s_col2, s_col3 = st.columns([3, 5, 0.5])
+                s_col1.markdown(f"**{sender.get('name', '')}**")
+                s_col2.caption(sender.get("address", ""))
+                with s_col3:
+                    if st.button("✕", key=f"rm_sender_{si}"):
+                        nl_cfg["senders"].pop(si)
+                        save_config(cfg)
+                        st.rerun()
+
+            st.markdown("**Add Sender**")
+            as_col1, as_col2, as_col3 = st.columns([3, 5, 0.5])
+            new_sender_name = as_col1.text_input(
+                "Name", key="new_sender_name", label_visibility="collapsed",
+                placeholder="Newsletter name",
+            )
+            new_sender_addr = as_col2.text_input(
+                "Address", key="new_sender_addr", label_visibility="collapsed",
+                placeholder="sender@example.com",
+            )
+            with as_col3:
+                if st.button("Add", key="add_sender", type="primary"):
+                    if new_sender_name and new_sender_addr:
+                        nl_cfg.setdefault("senders", []).append({
+                            "name": new_sender_name,
+                            "address": new_sender_addr,
+                        })
+                        save_config(cfg)
+                        st.rerun()
+
     # ── Sources ──
     with st.expander("Sources", expanded=False):
         feeds = cfg.get("feeds", [])
