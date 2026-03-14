@@ -35,11 +35,15 @@ def setup_logging(log_path: Path):
     )
     handler.suffix = '%Y-%m-%d'
 
-    # Configure logging
+    # Configure logging — file handler only when running under cron (no tty),
+    # stdout only when running interactively, to avoid double-logging.
+    handlers = [handler]
+    if sys.stdout.isatty():
+        handlers.append(logging.StreamHandler(sys.stdout))
     logging.basicConfig(
         level=logging.INFO,
         format='%(message)s',
-        handlers=[handler, logging.StreamHandler(sys.stdout)]
+        handlers=handlers,
     )
 
     return logging.getLogger(__name__)
