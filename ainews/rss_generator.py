@@ -53,7 +53,7 @@ def generate_rss_feed(
         '<?xml version="1.0" encoding="UTF-8" ?>',
         '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">',
         '<channel>',
-        f'<title>{escape(title)} (Score {min_score}+)</title>',
+        f'<title>{escape(title)}{f" (Score {min_score}+)" if min_score > 0 else ""}</title>',
         '<link>https://github.com/yourusername/ainews</link>',
         f'<description>{escape(description)}</description>',
         '<language>en-us</language>',
@@ -129,8 +129,7 @@ def save_rss_feed(
     Returns:
         Number of items in the combined feed.
     """
-    # Query items — use score 0 so we have all items available for the
-    # trusted feed (no threshold) and digest feed (score 7+).
+    # Query items for combined + digest feeds (exclude acknowledged)
     digest_min = 7
     items = db.query(
         min_score=0,
@@ -147,7 +146,16 @@ def save_rss_feed(
     # --- category feeds ---
     if trusted_sources is not None:
         trusted_set = set(trusted_sources)
-        trusted_items = [i for i in items if i.source in trusted_set]
+
+        # Trusted feed: include ALL items (even acknowledged) — no score filter
+        all_items = db.query(
+            min_score=0,
+            show_acknowledged=True,
+            sort_by="published",
+            sort_dir="DESC",
+        )
+        trusted_items = [i for i in all_items if i.source in trusted_set]
+
         digest_items = [i for i in items if i.source not in trusted_set]
 
         base = Path(output_path)
