@@ -5,11 +5,15 @@
 The AI News Aggregator is a Python-based news curation system that automatically fetches, scores, groups, and displays AI-related news from multiple sources. It uses Claude AI (Anthropic API) for intelligent scoring and learning objective generation, with a Streamlit-based dashboard for viewing and managing content.
 
 **Key Features:**
-- Multi-source news aggregation (RSS, HTML scraping, web search)
+- Two-tier source system: "trusted" (official vendor feeds, every 15 min) and "open" (general news/search, daily digest)
+- Multi-source news aggregation (RSS, HTML scraping, web search, email newsletters)
+- Newsletter ingestion via IMAP with Claude-powered story extraction
 - AI-powered relevance scoring and categorization using Claude Sonnet
-- Intelligent deduplication and grouping of related articles
-- Learning objective generation using Claude Opus
-- Dark-themed dashboard with Pluralsight-inspired design
+- Intelligent deduplication (fuzzy + semantic via Claude) and grouping of related articles
+- Three RSS feeds: combined (8+), trusted (all scores), digest (7+)
+- Learning objective generation using Claude Opus with web research
+- Dark-themed dashboard with minimalist Linear/Notion aesthetic
+- Daily Digest page with stories grouped by day and sorted by score
 - Interactive filtering, sorting, and acknowledgment system
 
 ---
@@ -49,10 +53,10 @@ The AI News Aggregator is a Python-based news curation system that automatically
                             ↕
 ┌─────────────────────────────────────────────────────────────┐
 │                   External Services                          │
-│  ┌──────────────┬──────────────┬────────────────────────┐  │
-│  │  Claude API  │  RSS Feeds   │  DuckDuckGo Search     │  │
-│  │  (Anthropic) │  (Multiple)  │  (Web Search)          │  │
-│  └──────────────┴──────────────┴────────────────────────┘  │
+│  ┌──────────────┬──────────────┬──────────────┬──────────┐  │
+│  │  Claude API  │  RSS Feeds   │  DuckDuckGo  │  IMAP    │  │
+│  │  (Anthropic) │  (Multiple)  │  (Search)    │  (Email) │  │
+│  └──────────────┴──────────────┴──────────────┴──────────┘  │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -85,31 +89,38 @@ The AI News Aggregator is a Python-based news curation system that automatically
 
 ```
 1. FETCH PHASE
-   ├── RSS Fetcher → Parse RSS/Atom feeds
+   ├── RSS Fetcher → Parse RSS/Atom feeds (trusted + open)
    ├── HTML Scraper → Auto-detect RSS or scrape HTML
    ├── Browser Scraper → Render JS pages with Playwright
-   └── Search Fetcher → Query DuckDuckGo for keywords
+   ├── Search Fetcher → Query DuckDuckGo for keywords (open only)
+   └── Email Fetcher → IMAP newsletters + Claude extraction (open only)
                 ↓
 2. DEDUPLICATE PHASE
    ├── Normalize URLs (lowercase domain, strip tracking params)
    ├── Hash normalized URLs
    ├── Fuzzy-match titles (Levenshtein ratio)
+   ├── Semantic dedup via Claude for borderline pairs
    └── Mark duplicates for removal
                 ↓
-3. SCORE PHASE
-   ├── Batch items (default: 10 per batch)
+3. CONTENT FETCH PHASE
+   └── Fetch full article text via httpx + trafilatura
+                ↓
+4. SCORE PHASE
+   ├── Batch items (default: 20 per batch)
    ├── Send to Claude Sonnet API with scoring prompt
    ├── Parse JSON response (score, category, summary, reasoning, LOs)
-   └── Store scores in database
+   └── Categories: New Releases, Research, Business, Developer Tools
                 ↓
-4. GROUP PHASE
+5. GROUP PHASE
    ├── Extract significant words from titles
    ├── Calculate fuzzy token-sort ratios
+   ├── Semantic grouping via Claude for near-misses
    ├── Cluster items covering same story
    └── Prefer vendor sources as primary (OpenAI, Anthropic, etc.)
                 ↓
-5. STORE PHASE
-   └── Write to SQLite with automatic schema migrations
+6. STORE + RSS PHASE
+   ├── Write to SQLite with automatic schema migrations
+   └── Generate 3 RSS feeds (combined 8+, trusted all, digest 7+)
 ```
 
 ---
@@ -156,27 +167,26 @@ CREATE INDEX idx_group_id ON news_items(group_id);
 CREATE INDEX idx_published ON news_items(published);
 ```
 
-#### `source_status`
-Tracks when each source was last scanned.
+#### `feed_scans`
+Tracks when each feed was last scanned (used by `--category` scheduling).
 
 ```sql
-CREATE TABLE source_status (
-    source TEXT PRIMARY KEY,
-    last_scanned DATETIME,
-    item_count INTEGER DEFAULT 0
+CREATE TABLE feed_scans (
+    feed_name TEXT PRIMARY KEY,
+    last_scanned DATETIME
 );
 ```
 
-#### `run_history`
-Pipeline execution history.
+#### `processed_emails`
+Tracks processed newsletter emails for idempotency.
 
 ```sql
-CREATE TABLE run_history (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    run_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    items_added INTEGER,
-    items_updated INTEGER,
-    duration_seconds REAL
+CREATE TABLE processed_emails (
+    message_id TEXT PRIMARY KEY,
+    sender TEXT,
+    subject TEXT,
+    processed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    stories_extracted INTEGER DEFAULT 0
 );
 ```
 
@@ -192,41 +202,57 @@ db_path: "data/ainews.db"
 
 # Anthropic API
 anthropic_api_key: "sk-ant-..."  # Required for scoring and LO generation
+model: claude-sonnet-4-5-20250929
+lo_model: claude-opus-4-6
 
 # Scoring configuration
-scoring_batch_size: 10  # Items per Claude API request
-scoring_prompt: |
-  # Custom scoring prompt (optional)
-  # Uses {items_text} placeholder for batch of items
+scoring_batch_size: 20  # Items per Claude API request
+semantic_dedup: true     # Use Claude for borderline dedup cases
 
-# Learning objectives prompt (optional)
-lo_prompt: |
-  # Custom LO generation prompt
-  # Uses {title}, {source}, {summary}, {url} placeholders
+# Source scheduling
+trusted_interval: 15    # Minutes between trusted source scans
+open_interval: 1440     # Minutes between open source scans (24h)
 
-# News sources
+# News sources (category: trusted or open)
 feeds:
   - name: "OpenAI News"
-    url: "https://openai.com/news/rss"
-    type: "rss"  # or "auto" or "web"
+    url: "https://openai.com/news/"
+    type: "web"
     enabled: true
+    category: trusted    # Scanned every 15 min
 
   - name: "Anthropic News"
     url: "https://www.anthropic.com/news"
-    type: "auto"  # Auto-detects RSS or falls back to HTML
+    type: "web"
     enabled: true
+    category: trusted
 
-  - name: "Google AI Blog"
-    url: "https://blog.google/technology/ai/"
-    type: "web"  # Uses Playwright for JS rendering
+  - name: "TechCrunch AI"
+    url: "https://techcrunch.com/category/artificial-intelligence/feed/"
+    type: "rss"
     enabled: true
+    category: open       # Included in daily digest
 
-# Search queries
+# Search queries (run on open/daily schedule)
 search_queries:
-  - "OpenAI news"
-  - "Claude AI Anthropic"
-  - "GPT-4 updates"
-  - "LLM research papers"
+  - query: "openai news"
+    category: open
+  - query: "anthropic news"
+    category: open
+
+# Newsletter email ingestion (runs on open/daily schedule)
+newsletters:
+  enabled: false
+  imap_host: imap.gmail.com
+  imap_port: 993
+  email: your-newsletters@gmail.com
+  # Password via env var: AINEWS_EMAIL_PASSWORD
+  max_emails_per_run: 50
+  senders:
+    - name: "TLDR AI"
+      address: "dan@tldrnewsletter.com"
+    - name: "Import AI"
+      address: "jack@jack-clark.net"
 ```
 
 ---
@@ -235,40 +261,53 @@ search_queries:
 
 ```
 AINews/
-├── dashboard.py                    # Main Streamlit app (200 lines)
-├── dashboard_components.py         # UI rendering components (400 lines)
-├── fetch_news.py                   # Pipeline execution script
-├── config.yaml                     # User configuration
+├── dashboard.py                    # Main Streamlit app
+├── dashboard_components.py         # UI rendering components
+├── fetch_news.py                   # Pipeline execution script (--category trusted|open)
+├── generate_rss_feed.py            # Standalone RSS generator
+├── config.yaml                     # User configuration (gitignored)
+├── config.example.yaml             # Example configuration template
 ├── requirements.txt                # Python dependencies
 │
 ├── assets/
-│   └── style.css                   # Streamlit custom CSS (Pluralsight theme)
+│   └── style.css                   # Custom dark theme CSS
 │
 ├── ainews/                         # Core backend package
 │   ├── __init__.py
 │   ├── models.py                   # Data models (RawNewsItem, ProcessedNewsItem)
 │   ├── config.py                   # Configuration loading/saving
+│   ├── rss_generator.py            # RSS feed generator (combined, trusted, digest)
 │   │
 │   ├── fetchers/
 │   │   ├── __init__.py
 │   │   ├── rss_fetcher.py         # RSS/Atom feed parser
 │   │   ├── html_scraper.py        # HTML scraping with auto-RSS detection
-│   │   ├── browser_scraper.py     # Playwright-based scraper
-│   │   └── search_fetcher.py      # DuckDuckGo search integration
+│   │   ├── web_searcher.py        # DuckDuckGo search integration
+│   │   ├── content_fetcher.py     # Full article content via trafilatura
+│   │   └── email_fetcher.py       # IMAP newsletter ingestion + Claude extraction
 │   │
 │   ├── processing/
 │   │   ├── __init__.py
-│   │   ├── deduplicator.py        # URL normalization + fuzzy title matching
-│   │   ├── scorer.py              # Claude API scoring
-│   │   └── grouper.py             # Article clustering
+│   │   ├── deduplicator.py        # URL normalization + fuzzy + semantic dedup
+│   │   ├── scorer.py              # Claude API scoring (Sonnet)
+│   │   └── grouper.py             # Fuzzy + semantic article clustering
 │   │
 │   └── storage/
 │       ├── __init__.py
 │       └── database.py            # SQLite operations + migrations
 │
-├── data/                           # Created at runtime
+├── data/                           # Created at runtime (gitignored)
 │   ├── ainews.db                  # SQLite database
-│   └── pipeline.log               # Last pipeline run log
+│   ├── pipeline.log               # Pipeline run log (rotated daily)
+│   ├── high_priority.xml          # Combined RSS feed (score 8+)
+│   ├── high_priority_trusted.xml  # Trusted sources RSS feed (all scores)
+│   └── high_priority_digest.xml   # Daily digest RSS feed (score 7+)
+│
+├── deployment/                     # AWS deployment scripts and docs
+│   ├── aws-ec2-setup.sh
+│   ├── QUICKSTART.md
+│   ├── README-AWS.md
+│   └── SECURITY.md
 │
 └── TECHNICAL_SPEC.md              # This document
 ```
@@ -364,6 +403,35 @@ def fetch_with_browser(url: str, source_name: str) -> list[RawNewsItem]:
 ```
 
 **Use Cases:** Sites that block simple HTTP requests or require JavaScript to render content (e.g., React/Vue SPAs).
+
+#### Email Fetcher (`email_fetcher.py`)
+**Purpose:** Fetch stories from email newsletters via IMAP and extract them using Claude.
+
+**Key Functions:**
+```python
+def fetch_all_newsletters(cfg: dict, db: Database) -> list[RawNewsItem]:
+    """
+    Connect to IMAP inbox, fetch unread emails from known senders,
+    extract stories using Claude, and return as RawNewsItem objects.
+
+    Flow:
+        1. Connect to IMAP server (Gmail via app password)
+        2. Fetch unread emails (up to max_emails_per_run)
+        3. Match sender against configured newsletter list
+        4. Convert HTML to text via trafilatura
+        5. Send text to Claude for structured story extraction
+        6. Parse JSON response (with repair for truncated responses)
+        7. Convert stories to RawNewsItem objects
+        8. Mark email as processed in DB and as read in IMAP
+
+    Newsletter senders are configured in config.yaml under newsletters.senders.
+    Password is stored in AINEWS_EMAIL_PASSWORD environment variable.
+    """
+```
+
+**Claude Extraction:** Each newsletter email is sent to Claude with a prompt that extracts individual stories as a JSON array with title, url, description, and content fields. Stories without URLs get synthetic `newsletter://` URIs.
+
+**Idempotency:** The `processed_emails` table tracks message IDs to prevent re-processing.
 
 #### Search Fetcher (`search_fetcher.py`)
 **Purpose:** Query DuckDuckGo for keywords.
@@ -1197,30 +1265,19 @@ logger = logging.getLogger('ainews')
    - Per-user acknowledgment tracking
    - Shared vs. personal feeds
 
-2. **Email Digest**
-   - Daily/weekly email summaries
-   - Top-scored items
-   - Customizable templates
-
-3. **Export Options**
-   - Export to Markdown
-   - Export to PDF
-   - RSS feed generation
-
-4. **Advanced Filtering**
+2. **Advanced Filtering**
    - Tag system
-   - Custom categories
    - Saved filter presets
 
-5. **Analytics Dashboard**
+3. **Analytics Dashboard**
    - Score trends over time
    - Source performance metrics
    - Topic clustering visualization
 
-6. **Mobile App**
-   - React Native or Flutter
-   - Push notifications
-   - Offline reading
+4. **Email Digest Output**
+   - Daily/weekly email summaries sent to subscribers
+   - Top-scored items with summaries
+   - Customizable templates
 
 ---
 

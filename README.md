@@ -4,12 +4,16 @@ A curated AI news dashboard that aggregates, scores, and groups news from multip
 
 ## Features
 
+- **Two-tier source system** — "Trusted" sources (official vendor feeds) scan every 15 minutes; "Open" sources (general news, search) run as a daily digest
 - **Multi-source fetching** — 49+ feeds from major AI/LLM vendors (OpenAI, Anthropic, Google, Microsoft, GitHub, AWS, Meta, NVIDIA, Hugging Face, Cohere, Mistral, Stability AI, Databricks, IBM) via RSS feeds and JavaScript-rendered websites using headless Chromium (Playwright)
-- **AI scoring** — Claude Sonnet scores each item 1-10 for relevance, assigns categories (New Releases / Industry), writes summaries and learning objectives
+- **Newsletter ingestion** — IMAP email fetcher reads AI newsletters (TLDR AI, Import AI, AlphaSignal, etc.), extracts stories using Claude, and feeds them into the normal pipeline
+- **AI scoring** — Claude Sonnet scores each item 1-10 for relevance, assigns categories (New Releases / Research / Business / Developer Tools), writes summaries and learning objectives
 - **Web-research enhanced learning objectives** — Claude Opus performs DuckDuckGo web searches to gather additional context and generate comprehensive, research-backed learning objectives on demand
-- **Smart grouping** — clusters articles covering the same story using fuzzy title matching
-- **Dark dashboard** — Streamlit app with a Pluralsight-inspired theme, expandable rows, filters, and acknowledge workflow
-- **Source management** — enable/disable individual feeds, add/remove sources, all from the Settings tab
+- **Smart grouping** — clusters articles covering the same story using fuzzy title matching + semantic dedup via Claude
+- **Three RSS feeds** — Combined (score 8+), Trusted (all scores from official sources), and Daily Digest (score 7+ from open sources)
+- **Daily Digest page** — Dashboard page showing stories grouped by day, sorted by score, with direct article links
+- **Dark dashboard** — Streamlit app with a minimalist Linear/Notion aesthetic, expandable rows, filters, and acknowledge workflow
+- **Source management** — enable/disable individual feeds, add/remove sources, manage newsletter senders, all from the Settings tab
 - **Customizable prompts** — both the scoring prompt and learning objectives prompt are fully editable
 
 ## Prerequisites
@@ -79,20 +83,24 @@ mkdir -p data
 Fetches news from all enabled sources, deduplicates, scores with Claude, and groups related stories:
 
 ```bash
+# Run all sources
 python fetch_news.py
+
+# Run only trusted (official vendor) sources
+python fetch_news.py --category trusted
+
+# Run only open (daily digest + newsletters) sources
+python fetch_news.py --category open
 ```
 
-**Automated scheduling:** When deployed (see [Deployment](#deployment)), the pipeline runs automatically every 15 minutes via cron. You can adjust the frequency in your crontab:
+**Automated scheduling:** When deployed, two cron jobs run automatically:
 
 ```bash
-# Edit crontab to change schedule
-crontab -e
+# Trusted sources — every 15 minutes
+*/15 * * * * cd /opt/ainews && python fetch_news.py --category trusted
 
-# Examples:
-# */15 * * * *   - Every 15 minutes (default)
-# */30 * * * *   - Every 30 minutes
-# 0 */6 * * *    - Every 6 hours
-# 0 9 * * *      - Daily at 9am
+# Open sources + newsletters — daily at 5am AEDT (18:00 UTC)
+0 18 * * * cd /opt/ainews && . /opt/ainews/.env && export AINEWS_EMAIL_PASSWORD && python fetch_news.py --category open
 ```
 
 ### Launch the dashboard
@@ -118,31 +126,27 @@ From the dashboard you can:
 - Use the **Settings** tab to run the pipeline, manage sources, and edit prompts
 - Filter by score range, date, and sort order in the sidebar
 
-### Generate RSS Feed
+### RSS Feeds
 
-You can generate an RSS feed of high-priority items (score 8+) for use in RSS readers:
+Three RSS feeds are generated automatically after each pipeline run:
 
-**Via Dashboard:**
-1. Go to the **Settings** tab
-2. Adjust the minimum score slider (default: 8)
-3. Click **Generate RSS**
-4. Download the XML file
+| Feed | File | Filter | Description |
+|------|------|--------|-------------|
+| **Combined** | `high_priority.xml` | Score 8+ | Top stories from all sources |
+| **Trusted** | `high_priority_trusted.xml` | All scores | Everything from official vendor channels |
+| **Digest** | `high_priority_digest.xml` | Score 7+ | Daily digest from open/search sources |
 
-**Via Command Line:**
+**Access on EC2:**
+```
+http://YOUR_EC2_IP/rss/high_priority.xml
+http://YOUR_EC2_IP/rss/high_priority_trusted.xml
+http://YOUR_EC2_IP/rss/high_priority_digest.xml
+```
+
+**Generate manually:**
 ```bash
 python generate_rss_feed.py --min-score 8 --output data/high_priority.xml
 ```
-
-To serve the feed for RSS readers:
-```bash
-# Start a simple HTTP server
-python -m http.server 8080
-
-# Subscribe in your RSS reader
-http://localhost:8080/data/high_priority.xml
-```
-
-Or upload the XML file to your web hosting and subscribe to that URL.
 
 ## Deployment
 
@@ -163,25 +167,29 @@ docker-compose up dashboard
 
 ```
 AINews/
-├── fetch_news.py              # CLI pipeline entry point
+├── fetch_news.py              # CLI pipeline entry point (--category trusted|open)
 ├── dashboard.py               # Streamlit dashboard
+├── dashboard_components.py    # UI rendering components
 ├── generate_rss_feed.py       # Generate RSS feed for high-priority items
 ├── config.example.yaml        # Example configuration (copy to config.yaml)
 ├── requirements.txt           # Python dependencies
-├── data/                      # SQLite database and logs (gitignored)
+├── assets/
+│   └── style.css              # Custom dark theme CSS
+├── data/                      # SQLite database, logs, RSS feeds (gitignored)
 └── ainews/                    # Core package
     ├── config.py              # Config loader / saver
     ├── models.py              # Data models (RawNewsItem, ProcessedNewsItem)
-    ├── rss_generator.py       # RSS feed XML generator
+    ├── rss_generator.py       # RSS feed generator (combined, trusted, digest)
     ├── fetchers/
     │   ├── rss_fetcher.py     # RSS/auto-detect feed fetcher
-    │   ├── web_page_fetcher.py # Playwright browser fetcher
+    │   ├── html_scraper.py    # HTML link/title extraction
     │   ├── web_searcher.py    # DuckDuckGo search
-    │   └── html_scraper.py    # HTML link/title extraction
+    │   ├── content_fetcher.py # Full article content via trafilatura
+    │   └── email_fetcher.py   # IMAP newsletter ingestion + Claude extraction
     ├── processing/
     │   ├── scorer.py          # Claude scoring (Sonnet)
     │   ├── deduplicator.py    # URL normalization + fuzzy title dedup
-    │   └── grouper.py         # Fuzzy story grouping
+    │   └── grouper.py         # Fuzzy + semantic story grouping
     └── storage/
         └── database.py        # SQLite with auto-migrations
 ```
@@ -197,15 +205,23 @@ All settings are in `config.yaml` and can also be edited from the dashboard Sett
 | `lo_model` | Model used for learning objectives | `claude-opus-4-6` |
 | `lo_web_research` | Enable web research for learning objectives | `true` |
 | `lo_search_count` | Number of web searches per learning objective | `3` |
-| `feeds` | List of news sources (name, url, type, enabled) | 49 sources (6 enabled by default) |
+| `feeds` | List of news sources (name, url, type, enabled, category) | 49 sources |
+| `feeds[].category` | `trusted` (frequent scan) or `open` (daily digest) | — |
 | `search_queries` | DuckDuckGo search terms | `[]` |
+| `trusted_interval` | Minutes between trusted source scans | `15` |
+| `open_interval` | Minutes between open source scans | `1440` |
 | `dedup_threshold` | Fuzzy match threshold for dedup (0-100) | `80` |
+| `semantic_dedup` | Enable Claude-based semantic dedup | `true` |
 | `max_items_per_feed` | Max items fetched per source | `20` |
 | `scoring_batch_size` | Items per Claude API request | `20` |
 | `scoring_prompt` | Custom scoring prompt (optional) | Built-in default |
 | `lo_prompt` | Custom learning objectives prompt (optional) | Built-in default |
 | `rss_output_path` | Output path for RSS feed | `data/high_priority.xml` |
-| `rss_min_score` | Minimum score for RSS feed items | `8` |
+| `rss_min_score` | Minimum score for combined RSS feed | `8` |
+| `newsletters.enabled` | Enable email newsletter ingestion | `false` |
+| `newsletters.email` | Gmail address for newsletters | — |
+| `newsletters.imap_host` | IMAP server hostname | `imap.gmail.com` |
+| `newsletters.senders` | List of newsletter senders (name + address) | `[]` |
 
 ## Common Operations
 
@@ -276,7 +292,16 @@ grep -i error /opt/ainews/data/pipeline.log
 **Manually run the pipeline:**
 ```bash
 cd /opt/ainews
+
+# Run all sources
 ./venv/bin/python fetch_news.py
+
+# Run only trusted sources
+./venv/bin/python fetch_news.py --category trusted
+
+# Run only open/digest sources (includes newsletters)
+. /opt/ainews/.env && export AINEWS_EMAIL_PASSWORD
+./venv/bin/python fetch_news.py --category open
 ```
 
 **Check dashboard service:**
@@ -311,13 +336,16 @@ sudo tail -f /var/log/nginx/access.log
 sudo tail -f /var/log/nginx/error.log
 ```
 
-**Access RSS feed:**
+**Access RSS feeds:**
 ```bash
-# Test locally on EC2
+# Combined (score 8+)
 curl http://localhost/rss/high_priority.xml
 
-# Access from browser
-http://YOUR_EC2_PUBLIC_IP/rss/high_priority.xml
+# Trusted sources (all scores)
+curl http://localhost/rss/high_priority_trusted.xml
+
+# Daily digest (score 7+)
+curl http://localhost/rss/high_priority_digest.xml
 ```
 
 **Troubleshooting:**

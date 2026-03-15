@@ -43,9 +43,20 @@ Choose your deployment method based on your needs:
    ./deployment/add-basic-auth.sh
    ```
 
-5. **Access:**
+5. **Set up cron jobs:**
+   ```bash
+   crontab -e
+   # Trusted sources every 15 min
+   */15 * * * * cd /opt/ainews && /opt/ainews/venv/bin/python fetch_news.py --category trusted >> /opt/ainews/data/pipeline.log 2>&1
+   # Open sources + newsletters daily at 5am AEDT (18:00 UTC)
+   0 18 * * * cd /opt/ainews && . /opt/ainews/.env && export AINEWS_EMAIL_PASSWORD && /opt/ainews/venv/bin/python fetch_news.py --category open >> /opt/ainews/data/pipeline.log 2>&1
+   ```
+
+6. **Access:**
    - Dashboard: `http://YOUR_EC2_IP/` (login: admin)
-   - RSS: `http://YOUR_EC2_IP/rss/high_priority.xml`
+   - Combined RSS (8+): `http://YOUR_EC2_IP/rss/high_priority.xml`
+   - Trusted RSS (all): `http://YOUR_EC2_IP/rss/high_priority_trusted.xml`
+   - Digest RSS (7+): `http://YOUR_EC2_IP/rss/high_priority_digest.xml`
 
 **Monthly cost:** ~$15
 
