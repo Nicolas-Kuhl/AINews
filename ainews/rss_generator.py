@@ -148,13 +148,14 @@ def save_rss_feed(
         trusted_set = set(trusted_sources)
 
         # Trusted feed: include ALL items (even acknowledged) — no score filter
-        all_items = db.query(
+        trusted_items = db.query(
             min_score=0,
+            sources=list(trusted_set),
             show_acknowledged=True,
             sort_by="published",
             sort_dir="DESC",
+            limit=500,
         )
-        trusted_items = [i for i in all_items if i.source in trusted_set]
 
         digest_items = [i for i in items if i.source not in trusted_set]
 
