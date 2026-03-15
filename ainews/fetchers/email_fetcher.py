@@ -307,7 +307,7 @@ def _extract_stories_with_claude(
 
     response = client.messages.create(
         model=model,
-        max_tokens=4096,
+        max_tokens=8192,
         messages=[{"role": "user", "content": prompt}],
     )
 
@@ -318,11 +318,37 @@ def _extract_stories_with_claude(
         text = re.sub(r"^```(?:json)?\s*\n?", "", text)
         text = re.sub(r"\n?```\s*$", "", text)
 
-    stories = json.loads(text)
+    try:
+        stories = json.loads(text)
+    except json.JSONDecodeError:
+        # Try to repair truncated JSON: close any open strings/arrays/objects
+        repaired = _repair_json_array(text)
+        stories = json.loads(repaired)
+
     if not isinstance(stories, list):
         stories = [stories]
 
     return stories
+
+
+def _repair_json_array(text: str) -> str:
+    """Attempt to repair a truncated JSON array from Claude.
+
+    Common issue: max_tokens reached mid-string, leaving unterminated
+    strings, objects, or the outer array bracket missing.
+    """
+    # Find the last complete object (ends with })
+    last_brace = text.rfind("}")
+    if last_brace == -1:
+        raise json.JSONDecodeError("No complete JSON object found", text, 0)
+
+    truncated = text[: last_brace + 1]
+
+    # Close the array if needed
+    if not truncated.rstrip().endswith("]"):
+        truncated = truncated.rstrip().rstrip(",") + "\n]"
+
+    return truncated
 
 
 def _stories_to_raw_items(
