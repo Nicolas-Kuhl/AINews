@@ -274,6 +274,7 @@ def _match_sender(from_header: str, sender_map: dict[str, str]) -> Optional[str]
         if domain and domain == known_domain:
             return name
 
+    logger.info(f"  [Email] Skipping unrecognised sender: {addr}")
     return None
 
 
