@@ -130,7 +130,7 @@ def save_rss_feed(
         Number of items in the combined feed.
     """
     # Query items for combined + digest feeds (exclude acknowledged)
-    digest_min = 7
+    digest_min = 8
     items = db.query(
         min_score=0,
         show_acknowledged=False,
