@@ -40,10 +40,11 @@ Respond with ONLY the learning objectives as a markdown bulleted list \
 def load_css(css_file_path: Path):
     """Load external CSS file and font links."""
     # Font links — must be <link> tags, NOT @import inside <style>
+    # Geist (Vercel) as primary, Inter as fallback
     st.markdown(
         '<link rel="preconnect" href="https://fonts.googleapis.com">'
         '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
-        '<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">',
+        '<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">',
         unsafe_allow_html=True,
     )
     if css_file_path.exists():
@@ -412,9 +413,9 @@ def _render_digest(days_data: dict, db_path: str, cfg: dict):
         item_count = sum(1 + len(related) for _, related in grouped_items)
 
         st.markdown(
-            f'<div style="margin:1.5rem 0 0.5rem 0;padding:0.5rem 0;border-bottom:1px solid var(--border);">'
-            f'<span style="font-size:1.25rem;font-weight:600;">{day_label}</span>'
-            f'<span style="font-size:0.85rem;color:var(--text-muted);margin-left:1rem;">'
+            f'<div style="margin:2rem 0 0.75rem 0;padding:0.6rem 0;border-bottom:2px solid var(--border-default);">'
+            f'<span style="font-size:1.3rem;font-weight:700;letter-spacing:-0.03em;">{day_label}</span>'
+            f'<span style="font-size:0.8rem;color:var(--text-muted);margin-left:1rem;font-weight:500;">'
             f'{item_count} items</span>'
             f'</div>',
             unsafe_allow_html=True,
@@ -442,8 +443,11 @@ def _render_digest_item(primary, related):
     summary = primary.summary or ""
 
     st.markdown(
-        f'<div style="margin:0.5rem 0;padding:0.6rem 0;border-bottom:1px solid var(--border-light, rgba(128,128,128,0.1));">'
-        f'<div style="display:flex;align-items:baseline;gap:0.75rem;">'
+        f'<div style="margin:0.4rem 0;padding:0.75rem 0.85rem;border-radius:8px;'
+        f'transition:background-color 0.15s ease;"'
+        f' onmouseover="this.style.backgroundColor=\'var(--bg-hover)\'"'
+        f' onmouseout="this.style.backgroundColor=\'transparent\'">'
+        f'<div style="display:flex;align-items:baseline;gap:0.85rem;">'
         f'{score_html}'
         f'<div style="flex:1;">'
         f'<div>{title_html}</div>'

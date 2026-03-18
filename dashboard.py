@@ -135,9 +135,9 @@ def main():
     load_css(PROJECT_ROOT / "assets" / "style.css")
 
     st.markdown(
-        '<p style="font-size:0.65rem;letter-spacing:0.1em;text-transform:uppercase;'
-        'color:var(--text-muted);margin:0 0 0.15rem 0;">DASHBOARD</p>'
-        '<h1 style="font-size:1.5rem;font-weight:600;margin:0 0 0.75rem 0;">AI News</h1>',
+        '<p style="font-size:0.65rem;letter-spacing:0.12em;text-transform:uppercase;'
+        'color:var(--text-muted);margin:0 0 0.2rem 0;font-weight:500;">DASHBOARD</p>'
+        '<h1 style="font-size:1.75rem;font-weight:700;letter-spacing:-0.035em;margin:0 0 0.85rem 0;">AI News</h1>',
         unsafe_allow_html=True,
     )
 
@@ -191,8 +191,8 @@ def main():
     # Sidebar filters
     with st.sidebar:
         st.markdown(
-            '<p style="font-size:0.65rem;letter-spacing:0.1em;text-transform:uppercase;'
-            'color:var(--text-muted);margin:0 0 0.5rem 0;">FILTERS</p>',
+            '<p style="font-size:0.65rem;letter-spacing:0.12em;text-transform:uppercase;'
+            'color:var(--text-muted);margin:0 0 0.6rem 0;font-weight:500;">FILTERS</p>',
             unsafe_allow_html=True,
         )
 
