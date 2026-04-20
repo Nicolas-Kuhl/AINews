@@ -16,25 +16,10 @@ content_score_chars: 3000
 feeds:
 # OpenAI
 - name: OpenAI News
-  url: https://openai.com/news/
-  type: web
-  enabled: true
-  category: trusted         # trusted (frequent) or open (daily digest)
-- name: OpenAI News RSS
   url: https://openai.com/news/rss.xml
   type: rss
-  enabled: false
-  category: trusted
-- name: OpenAI Blog RSS
-  url: https://openai.com/blog/rss/
-  type: rss
-  enabled: false
-  category: trusted
-- name: OpenAI Blog
-  url: https://openai.com/blog/
-  type: web
-  enabled: false
-  category: trusted
+  enabled: true
+  category: trusted         # trusted (frequent) or open (daily digest)
 
 # Anthropic
 - name: Anthropic News
