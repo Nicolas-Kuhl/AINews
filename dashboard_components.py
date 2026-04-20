@@ -180,38 +180,41 @@ def generate_learning_objectives(cfg: dict, item):
     return text_content.strip()
 
 
+def _story_badges(primary, related) -> str:
+    """Build inline badges for a story row."""
+    badges = [f'<span class="story-pill">{primary.category}</span>']
+    if primary.fetched_via:
+        badges.append(f'<span class="story-pill story-pill-subtle">{primary.fetched_via.replace("_", " ")}</span>')
+    if related:
+        badges.append(f'<span class="story-pill story-pill-count">+{len(related)} related</span>')
+    return "".join(badges)
+
+
 @st.fragment
-def _render_news_list(grouped_items, db_path, cfg):
-    """Render list of grouped news items as a compact table.
+def _render_news_list(grouped_items, db_path, cfg, compact: bool = False):
+    """Render list of grouped news items as a compact table."""
 
-    Decorated with @st.fragment so that expand/collapse and acknowledge
-    clicks only rerun this fragment, not the entire page.
-
-    Accepts db_path (not a Database object) because fragments can rerun
-    after main() has closed its connection.  A fresh connection is opened
-    here so writes (acknowledge, update LO) always work.
-    """
-    from ainews.storage.database import Database
-
-    db = Database(db_path)
-
-    # Table header
     with st.container():
-        h_cols = st.columns([0.4, 0.5, 5.5, 1.8, 1.2, 0.8])
+        h_cols = st.columns([0.5, 0.7, 5.6, 1.6, 1.2, 0.8])
         h_cols[0].markdown("")
-        h_cols[1].markdown('<span class="date-mono" style="font-size:0.65rem;letter-spacing:0.06em;opacity:0.5;">SCORE</span>', unsafe_allow_html=True)
-        h_cols[2].markdown('<span class="date-mono" style="font-size:0.65rem;letter-spacing:0.06em;opacity:0.5;">TITLE</span>', unsafe_allow_html=True)
-        h_cols[3].markdown('<span class="date-mono" style="font-size:0.65rem;letter-spacing:0.06em;opacity:0.5;">SOURCE</span>', unsafe_allow_html=True)
-        h_cols[4].markdown('<span class="date-mono" style="font-size:0.65rem;letter-spacing:0.06em;opacity:0.5;">DATE</span>', unsafe_allow_html=True)
+        h_cols[1].markdown('<span class="list-header-label">Score</span>', unsafe_allow_html=True)
+        h_cols[2].markdown('<span class="list-header-label">Story</span>', unsafe_allow_html=True)
+        h_cols[3].markdown('<span class="list-header-label">Source</span>', unsafe_allow_html=True)
+        h_cols[4].markdown('<span class="list-header-label">Published</span>', unsafe_allow_html=True)
         h_cols[5].markdown("")
 
     # Render each news item
     for primary, related in grouped_items:
-        _render_news_item(primary, related, db, cfg)
+        _render_news_item(primary, related, db_path, cfg, compact=compact)
 
 
-def _render_news_item(primary, related, db, cfg):
-    """Render a single news item as a table row with expandable details."""
+@st.fragment
+def _render_news_item(primary, related, db_path, cfg, compact: bool = False):
+    """Render a single news item with isolated reruns for faster interaction."""
+    from ainews.storage.database import Database
+
+    db = Database(db_path)
+
     # Check if expanded
     expand_key = f"expand_{primary.id}"
     is_expanded = st.session_state.get(expand_key, False)
@@ -224,11 +227,12 @@ def _render_news_item(primary, related, db, cfg):
             if rel.id:
                 db.acknowledge(rel.id)
         st.session_state.pop(ack_pending_key, None)
+        db.close()
         return
 
     # Main row
     with st.container():
-        cols = st.columns([0.4, 0.5, 5.5, 1.8, 1.2, 0.8])
+        cols = st.columns([0.5, 0.7, 5.6, 1.6, 1.2, 0.8])
 
         # Expand/collapse button
         with cols[0]:
@@ -250,22 +254,36 @@ def _render_news_item(primary, related, db, cfg):
             unsafe_allow_html=True
         )
 
-        # Title as clickable link with related count badge
-        title_md = f"[{primary.title}]({primary.url})"
-        if related:
-            title_md += f' <span class="related-count">+{len(related)}</span>'
-        cols[2].markdown(title_md, unsafe_allow_html=True)
+        preview_summary = primary.summary or ""
+        if preview_summary:
+            preview_summary = preview_summary[:220].rstrip()
+            if len(primary.summary or "") > len(preview_summary):
+                preview_summary += "…"
 
-        # Source
-        cols[3].caption(primary.source)
+        story_body = [
+            f'<a class="story-title-link" href="{primary.url}" target="_blank">{primary.title}</a>',
+            f'<div class="story-meta-row">{_story_badges(primary, related)}</div>',
+        ]
+        if preview_summary and not compact:
+            story_body.append(f'<div class="story-preview">{preview_summary}</div>')
+        cols[2].markdown(
+            f'<div class="story-cell">{"".join(story_body)}</div>',
+            unsafe_allow_html=True,
+        )
 
-        # Date (monospace for alignment)
+        cols[3].markdown(
+            f'<div class="source-cell"><span class="source-name">{primary.source}</span></div>',
+            unsafe_allow_html=True,
+        )
+
         if primary.published:
-            date_str = primary.published.strftime("%b %d %H:%M")
+            date_str = primary.published.strftime("%b %d")
+            time_str = primary.published.strftime("%H:%M")
         else:
             date_str = "—"
+            time_str = ""
         cols[4].markdown(
-            f'<span class="date-mono">{date_str}</span>',
+            f'<div class="date-stack"><span class="date-mono">{date_str}</span><span class="date-subtle">{time_str}</span></div>',
             unsafe_allow_html=True
         )
 
@@ -277,13 +295,14 @@ def _render_news_item(primary, related, db, cfg):
                     st.cache_data.clear()
                     st.rerun(scope="fragment")
             else:
-                st.markdown('<span style="color:var(--text-muted);font-size:0.8rem;">✓</span>', unsafe_allow_html=True)
+                st.markdown('<span class="ack-complete">✓</span>', unsafe_allow_html=True)
 
-    # Expandable details — indented to align under title column
     if is_expanded:
         _, detail_col = st.columns([0.9, 9.3])
         with detail_col:
             _render_item_details(primary, related, db, cfg)
+
+    db.close()
 
 
 def _render_item_details(primary, related, db, cfg):
@@ -388,7 +407,7 @@ def _render_learning_objectives(primary, cfg, db):
 
 
 @st.fragment
-def _render_digest(days_data: dict, db_path: str, cfg: dict):
+def _render_digest(days_data: dict, db_path: str, cfg: dict, compact: bool = False):
     """Render daily digest view — score, linked title, and summary for each item."""
     from datetime import datetime
 
@@ -412,20 +431,20 @@ def _render_digest(days_data: dict, db_path: str, cfg: dict):
 
         item_count = sum(1 + len(related) for _, related in grouped_items)
 
-        st.markdown(
-            f'<div style="margin:2rem 0 0.75rem 0;padding:0.6rem 0;border-bottom:2px solid var(--border-default);">'
-            f'<span style="font-size:1.3rem;font-weight:700;letter-spacing:-0.03em;">{day_label}</span>'
-            f'<span style="font-size:0.8rem;color:var(--text-muted);margin-left:1rem;font-weight:500;">'
-            f'{item_count} items</span>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
+        with st.expander(f"{day_label} · {item_count} items", expanded=(day_str == next(iter(days_data)))):
+            st.markdown(
+                f'<div class="digest-day-header">'
+                f'<span class="digest-day-title">{day_label}</span>'
+                f'<span class="digest-day-count">{item_count} items</span>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
 
-        for primary, related in grouped_items:
-            _render_digest_item(primary, related)
+            for primary, related in grouped_items:
+                _render_digest_item(primary, related, compact=compact)
 
 
-def _render_digest_item(primary, related):
+def _render_digest_item(primary, related, compact: bool = False):
     """Render a digest item: score, linked title, and summary."""
     if primary.score >= 8:
         score_class = "high"
@@ -436,21 +455,19 @@ def _render_digest_item(primary, related):
 
     score_html = f'<span class="score-num {score_class}">{primary.score}</span>'
 
-    title_html = f'<a href="{primary.url}" target="_blank" style="font-weight:500;font-size:1.05rem;">{primary.title}</a>'
-    if related:
-        title_html += f' <span class="related-count">+{len(related)}</span>'
-
     summary = primary.summary or ""
+    if compact:
+        summary = ""
+    elif len(summary) > 240:
+        summary = summary[:240].rstrip() + "…"
 
     st.markdown(
-        f'<div style="margin:0.4rem 0;padding:0.75rem 0.85rem;border-radius:8px;'
-        f'transition:background-color 0.15s ease;"'
-        f' onmouseover="this.style.backgroundColor=\'var(--bg-hover)\'"'
-        f' onmouseout="this.style.backgroundColor=\'transparent\'">'
-        f'<div style="display:flex;align-items:baseline;gap:0.85rem;">'
+        f'<div class="digest-card">'
+        f'<div class="digest-card-top">'
         f'{score_html}'
-        f'<div style="flex:1;">'
-        f'<div>{title_html}</div>'
+        f'<div class="digest-story">'
+        f'<a class="story-title-link" href="{primary.url}" target="_blank">{primary.title}</a>'
+        f'<div class="story-meta-row">{_story_badges(primary, related)}</div>'
         f'<div class="digest-summary">{summary}</div>'
         f'</div>'
         f'</div>'

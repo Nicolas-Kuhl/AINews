@@ -44,8 +44,50 @@ def get_last_run_stats(db_path: str):
     return result
 
 
+@st.cache_data(ttl=60)
+def get_source_status(db_path: str):
+    """Cached source status data for dashboard health cards."""
+    db = Database(db_path)
+    result = db.get_source_status()
+    db.close()
+    return result
+
+
+def _relative_time_label(timestamp_iso: str) -> str:
+    """Format an ISO timestamp as a compact relative label."""
+    try:
+        dt = datetime.fromisoformat(timestamp_iso)
+        now = datetime.now(timezone.utc)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        delta = now - dt
+        if delta.total_seconds() < 60:
+            return "just now"
+        if delta.total_seconds() < 3600:
+            mins = int(delta.total_seconds() // 60)
+            return f"{mins} minute{'s' if mins != 1 else ''} ago"
+        if delta.total_seconds() < 86400:
+            hours = int(delta.total_seconds() // 3600)
+            return f"{hours} hour{'s' if hours != 1 else ''} ago"
+        days = int(delta.total_seconds() // 86400)
+        return f"{days} day{'s' if days != 1 else ''} ago"
+    except Exception:
+        return timestamp_iso
+
+
+def _matches_search(item, query_lower: str) -> bool:
+    """Return True when query matches key story fields."""
+    haystacks = [
+        item.title or "",
+        item.summary or "",
+        item.source or "",
+        item.category or "",
+    ]
+    return any(query_lower in text.lower() for text in haystacks)
+
+
 def filter_grouped_items(grouped_items, search_query: str):
-    """Filter grouped items by search query (title or summary)."""
+    """Filter grouped items by search query."""
     if not search_query:
         return grouped_items
 
@@ -53,20 +95,21 @@ def filter_grouped_items(grouped_items, search_query: str):
     filtered = []
 
     for primary, related in grouped_items:
-        # Check if query matches title or summary
-        if (query_lower in primary.title.lower() or
-            (primary.summary and query_lower in primary.summary.lower())):
+        if _matches_search(primary, query_lower):
             filtered.append((primary, related))
             continue
 
-        # Check related items
         for item in related:
-            if (query_lower in item.title.lower() or
-                (item.summary and query_lower in item.summary.lower())):
+            if _matches_search(item, query_lower):
                 filtered.append((primary, related))
                 break
 
     return filtered
+
+
+def _count_grouped_items(grouped_items) -> int:
+    """Count primary and related items in a grouped result set."""
+    return sum(1 + len(related) for _, related in grouped_items)
 
 
 def check_authentication():
@@ -134,49 +177,65 @@ def main():
     # Load CSS from external file
     load_css(PROJECT_ROOT / "assets" / "style.css")
 
-    st.markdown(
-        '<p style="font-size:0.65rem;letter-spacing:0.12em;text-transform:uppercase;'
-        'color:var(--text-muted);margin:0 0 0.2rem 0;font-weight:500;">DASHBOARD</p>'
-        '<h1 style="font-size:1.75rem;font-weight:700;letter-spacing:-0.035em;margin:0 0 0.85rem 0;">AI News</h1>',
-        unsafe_allow_html=True,
-    )
-
     cfg = load_config()
     db = Database(cfg["db_path"])
 
-    # Run status bar (cached, with relative timestamp)
     run_stats = get_last_run_stats(cfg["db_path"])
+    source_status = get_source_status(cfg["db_path"])
+    enabled_sources = sum(1 for feed in cfg.get("feeds", []) if feed.get("enabled", True))
+    enabled_queries = len(cfg.get("search_queries", []))
+    total_sources = enabled_sources + enabled_queries
+
+    stale_sources = 0
     if run_stats:
         try:
-            timestamp_iso = run_stats['last_run']
-            dt = datetime.fromisoformat(timestamp_iso)
-            # Relative time
-            now = datetime.now(timezone.utc)
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-            delta = now - dt
-            if delta.total_seconds() < 60:
-                relative_time = "just now"
-            elif delta.total_seconds() < 3600:
-                mins = int(delta.total_seconds() // 60)
-                relative_time = f"{mins} minute{'s' if mins != 1 else ''} ago"
-            elif delta.total_seconds() < 86400:
-                hours = int(delta.total_seconds() // 3600)
-                relative_time = f"{hours} hour{'s' if hours != 1 else ''} ago"
-            else:
-                days = int(delta.total_seconds() // 86400)
-                relative_time = f"{days} day{'s' if days != 1 else ''} ago"
+            last_run_dt = datetime.fromisoformat(run_stats["last_run"])
+            if last_run_dt.tzinfo is None:
+                last_run_dt = last_run_dt.replace(tzinfo=timezone.utc)
+            for source in source_status:
+                try:
+                    scanned = datetime.fromisoformat(source["last_scanned"])
+                    if scanned.tzinfo is None:
+                        scanned = scanned.replace(tzinfo=timezone.utc)
+                    if scanned < last_run_dt - timedelta(days=2):
+                        stale_sources += 1
+                except Exception:
+                    stale_sources += 1
         except Exception:
-            relative_time = run_stats['last_run']
+            stale_sources = 0
 
+    st.markdown(
+        '<section class="hero-shell">'
+        '<div class="hero-copy">'
+        '<p class="hero-kicker">Dashboard</p>'
+        '<h1>AI News</h1>'
+        '<p class="hero-subtitle">A sharper editorial view of what changed, what matters, and what still needs attention.</p>'
+        '</div>'
+        '<div class="hero-orb hero-orb-a"></div>'
+        '<div class="hero-orb hero-orb-b"></div>'
+        '</section>',
+        unsafe_allow_html=True,
+    )
+
+    if run_stats:
         st.markdown(
-            f'<span class="status-chip">'
-            f'<span class="status-dot"></span>'
-            f'Last run <strong>{relative_time}</strong>'
-            f'</span> '
-            f'<span class="status-chip">'
-            f'24h <strong>{run_stats["items_added"]} items</strong>'
-            f'</span>',
+            '<section class="overview-grid">'
+            f'<div class="overview-card overview-card-wide">'
+            f'<p class="overview-label">Pipeline status</p>'
+            f'<div class="overview-value">Healthy</div>'
+            f'<p class="overview-note">Last run {_relative_time_label(run_stats["last_run"])} · {run_stats["items_added"]} stories added in the last 24 hours</p>'
+            '</div>'
+            f'<div class="overview-card">'
+            f'<p class="overview-label">Live sources</p>'
+            f'<div class="overview-value">{total_sources}</div>'
+            f'<p class="overview-note">{enabled_sources} feeds · {enabled_queries} search queries</p>'
+            '</div>'
+            f'<div class="overview-card">'
+            f'<p class="overview-label">Source health</p>'
+            f'<div class="overview-value">{max(total_sources - stale_sources, 0)}</div>'
+            f'<p class="overview-note">{stale_sources} stale or quiet source{"s" if stale_sources != 1 else ""}</p>'
+            '</div>'
+            '</section>',
             unsafe_allow_html=True,
         )
     else:
@@ -196,11 +255,25 @@ def main():
             unsafe_allow_html=True,
         )
 
-        search_query = st.text_input("Search titles/summaries", placeholder="Type to filter...")
+        preset_options = {
+            "Last 24 hours": 1,
+            "Last 7 days": 7,
+            "Last 30 days": 30,
+            "All time": None,
+        }
+        filter_preset = st.selectbox("Quick view", list(preset_options.keys()), index=2)
+        preset_days = preset_options[filter_preset]
 
-        score_range = st.slider("Score range", 1, 10, (1, 10))
+        search_query = st.text_input("Search stories", placeholder="Title, summary, source, or category")
 
-        default_start = datetime.now(timezone.utc) - timedelta(days=30)
+        default_score = (8, 10) if filter_preset == "Last 24 hours" else (1, 10)
+        score_range = st.slider("Score range", 1, 10, default_score)
+
+        default_start = (
+            datetime.now(timezone.utc) - timedelta(days=preset_days)
+            if preset_days is not None else
+            datetime.now(timezone.utc) - timedelta(days=3650)
+        )
         date_range = st.date_input(
             "Date range",
             value=(default_start.date(), datetime.now(timezone.utc).date()),
@@ -211,6 +284,8 @@ def main():
         sort_options = {"Score": "score", "Date": "published", "Source": "source", "Title": "title"}
         sort_label = st.selectbox("Sort by", list(sort_options.keys()))
         sort_dir = st.radio("Direction", ["DESC", "ASC"], horizontal=True)
+
+        story_density = st.radio("Story density", ["Editorial", "Compact"], horizontal=True)
 
     # Tabs — dynamic from config categories
     categories = cfg.get("categories", ["New Releases", "Research", "Business", "Developer Tools"])
@@ -234,6 +309,25 @@ def main():
         sort_dir=sort_dir,
     )
 
+    active_filters = []
+    active_filters.append(filter_preset)
+    if search_query:
+        active_filters.append(f'Search: "{search_query}"')
+    if score_range != (1, 10):
+        active_filters.append(f"Score {score_range[0]}-{score_range[1]}")
+    if not show_acknowledged:
+        active_filters.append("Unacknowledged only")
+    if sort_label != "Score" or sort_dir != "DESC":
+        active_filters.append(f"{sort_label} {sort_dir}")
+
+    st.markdown(
+        '<div class="filter-chip-row">' +
+        "".join(f'<span class="filter-chip">{chip}</span>' for chip in active_filters) +
+        f'<span class="filter-chip filter-chip-muted">{story_density} view</span>' +
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
     # Daily Digest tab
     with tabs[0]:
         digest_data = get_digest_items(
@@ -252,13 +346,11 @@ def main():
             for day, grouped_items in digest_data.items():
                 filtered = []
                 for primary, related in grouped_items:
-                    if (query_lower in primary.title.lower() or
-                        (primary.summary and query_lower in primary.summary.lower())):
+                    if _matches_search(primary, query_lower):
                         filtered.append((primary, related))
                         continue
                     for item in related:
-                        if (query_lower in item.title.lower() or
-                            (item.summary and query_lower in item.summary.lower())):
+                        if _matches_search(item, query_lower):
                             filtered.append((primary, related))
                             break
                 if filtered:
@@ -270,11 +362,10 @@ def main():
             for items in digest_data.values()
         )
         st.markdown(
-            f'<p style="font-size:0.75rem;color:var(--text-muted);margin:0.5rem 0;">'
-            f'{total_items} items across {len(digest_data)} days</p>',
+            f'<div class="section-summary">{total_items} stories across {len(digest_data)} publication days</div>',
             unsafe_allow_html=True,
         )
-        _render_digest(digest_data, cfg["db_path"], cfg)
+        _render_digest(digest_data, cfg["db_path"], cfg, compact=(story_density == "Compact"))
 
     # Category tabs (dynamic)
     for i, category in enumerate(categories):
@@ -282,8 +373,7 @@ def main():
             grouped = get_grouped_items(cfg["db_path"], category, **filter_kwargs)
             grouped = filter_grouped_items(grouped, search_query)
             st.markdown(
-                f'<p style="font-size:0.75rem;color:var(--text-muted);margin:0.5rem 0;">'
-                f'{len(grouped)} items</p>',
+                f'<div class="section-summary">{_count_grouped_items(grouped)} stories in {category}</div>',
                 unsafe_allow_html=True,
             )
             if not grouped:
@@ -295,7 +385,7 @@ def main():
                     unsafe_allow_html=True,
                 )
             else:
-                _render_news_list(grouped, cfg["db_path"], cfg)
+                _render_news_list(grouped, cfg["db_path"], cfg, compact=(story_density == "Compact"))
 
     # Settings tab
     with tabs[-2]:
