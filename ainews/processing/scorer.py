@@ -62,7 +62,7 @@ def _format_item_for_batch(index: int, item: RawNewsItem, content_max: int = 300
 def _score_batch(
     client: anthropic.Anthropic, model: str, items: list[RawNewsItem],
     start_index: int, scoring_prompt: str,
-    categories: list[str] | None = None,
+    categories: Optional[list[str]] = None,
     content_max: int = 3000,
 ) -> list[ProcessedNewsItem]:
     """Score a batch of items in a single API call."""
@@ -144,7 +144,7 @@ def score_items(
     items: list[RawNewsItem],
     batch_size: int = 10,
     scoring_prompt: Optional[str] = None,
-    categories: list[str] | None = None,
+    categories: Optional[list[str]] = None,
     content_max: int = 3000,
 ) -> list[ProcessedNewsItem]:
     """Score a list of raw news items using Claude in batches."""

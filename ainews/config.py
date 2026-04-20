@@ -67,7 +67,7 @@ def load_config(path: Path = CONFIG_PATH) -> dict:
         else:
             if "category" not in q:
                 interval = q.pop("scan_interval", 15)
-                q["category"] = "open" if interval > 60 else "open"
+                q["category"] = "open" if interval > 60 else "trusted"
             else:
                 q.pop("scan_interval", None)
             normalized.append(q)

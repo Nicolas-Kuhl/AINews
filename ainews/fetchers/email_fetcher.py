@@ -2,6 +2,7 @@
 
 import email
 import email.utils
+from email.header import decode_header
 import imaplib
 import json
 import logging
@@ -203,7 +204,7 @@ def _parse_email(raw_bytes: bytes) -> Optional[ParsedEmail]:
     subject = msg.get("Subject", "")
     # Decode subject if encoded
     if subject:
-        decoded_parts = email.header.decode_header(subject)
+        decoded_parts = decode_header(subject)
         subject = "".join(
             part.decode(charset or "utf-8") if isinstance(part, bytes) else part
             for part, charset in decoded_parts

@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from email.utils import formatdate
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 from xml.sax.saxutils import escape
 
 from ainews.models import ProcessedNewsItem
@@ -111,7 +111,7 @@ def save_rss_feed(
     db,
     output_path: str,
     min_score: int = 8,
-    trusted_sources: List[str] | None = None,
+    trusted_sources: Optional[List[str]] = None,
 ):
     """
     Generate and save RSS feeds.  When *trusted_sources* is provided, three
@@ -147,15 +147,18 @@ def save_rss_feed(
     if trusted_sources is not None:
         trusted_set = set(trusted_sources)
 
-        # Trusted feed: include ALL items (even acknowledged) — no score filter
-        trusted_items = db.query(
-            min_score=0,
-            sources=list(trusted_set),
-            show_acknowledged=True,
-            sort_by="published",
-            sort_dir="DESC",
-            limit=500,
-        )
+        # Trusted feed contains only configured official feed sources.
+        if trusted_set:
+            trusted_items = db.query(
+                min_score=0,
+                sources=list(trusted_set),
+                show_acknowledged=True,
+                sort_by="published",
+                sort_dir="DESC",
+                limit=500,
+            )
+        else:
+            trusted_items = []
 
         digest_items = [i for i in items if i.source not in trusted_set]
 
