@@ -40,11 +40,11 @@ Respond with ONLY the learning objectives as a markdown bulleted list \
 def load_css(css_file_path: Path):
     """Load external CSS file and font links."""
     # Font links — must be <link> tags, NOT @import inside <style>
-    # Geist (Vercel) as primary, Inter as fallback
+    # IBM Plex keeps the interface analytical without feeling generic.
     st.markdown(
         '<link rel="preconnect" href="https://fonts.googleapis.com">'
         '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
-        '<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">',
+        '<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">',
         unsafe_allow_html=True,
     )
     if css_file_path.exists():

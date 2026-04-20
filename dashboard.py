@@ -205,14 +205,23 @@ def main():
             stale_sources = 0
 
     st.markdown(
-        '<section class="hero-shell">'
-        '<div class="hero-copy">'
-        '<p class="hero-kicker">Dashboard</p>'
-        '<h1>AI News</h1>'
-        '<p class="hero-subtitle">A sharper editorial view of what changed, what matters, and what still needs attention.</p>'
+        '<section class="hero-shell terminal-deck">'
+        '<div class="terminal-deck-bar">'
+        '<span class="terminal-node">AINEWS // ANALYST TERMINAL</span>'
+        '<span class="terminal-node terminal-node-live">LIVE MONITOR</span>'
         '</div>'
-        '<div class="hero-orb hero-orb-a"></div>'
-        '<div class="hero-orb hero-orb-b"></div>'
+        '<div class="terminal-deck-main">'
+        '<div class="hero-copy">'
+        '<p class="hero-kicker">Operations View</p>'
+        '<h1>AI News Analyst Terminal</h1>'
+        '<p class="hero-subtitle">Fast, high-signal scanning for releases, research, business moves, and developer tooling.</p>'
+        '</div>'
+        '<div class="terminal-legend">'
+        '<span class="legend-item"><span class="legend-swatch legend-cyan"></span>active state</span>'
+        '<span class="legend-item"><span class="legend-swatch legend-amber"></span>high score</span>'
+        '<span class="legend-item"><span class="legend-swatch legend-red"></span>alert</span>'
+        '</div>'
+        '</div>'
         '</section>',
         unsafe_allow_html=True,
     )
@@ -222,7 +231,7 @@ def main():
             '<section class="overview-grid">'
             f'<div class="overview-card overview-card-wide">'
             f'<p class="overview-label">Pipeline status</p>'
-            f'<div class="overview-value">Healthy</div>'
+            f'<div class="overview-value">ONLINE</div>'
             f'<p class="overview-note">Last run {_relative_time_label(run_stats["last_run"])} · {run_stats["items_added"]} stories added in the last 24 hours</p>'
             '</div>'
             f'<div class="overview-card">'
@@ -250,8 +259,10 @@ def main():
     # Sidebar filters
     with st.sidebar:
         st.markdown(
-            '<p style="font-size:0.65rem;letter-spacing:0.12em;text-transform:uppercase;'
-            'color:var(--text-muted);margin:0 0 0.6rem 0;font-weight:500;">FILTERS</p>',
+            '<div class="sidebar-panel-heading">'
+            '<div class="sidebar-panel-kicker">Control Panel</div>'
+            '<div class="sidebar-panel-copy">Filter live stories, tune density, and sort by signal.</div>'
+            '</div>',
             unsafe_allow_html=True,
         )
 
@@ -322,6 +333,7 @@ def main():
 
     st.markdown(
         '<div class="filter-chip-row">' +
+        '<span class="filter-chip-label">ACTIVE FILTERS</span>' +
         "".join(f'<span class="filter-chip">{chip}</span>' for chip in active_filters) +
         f'<span class="filter-chip filter-chip-muted">{story_density} view</span>' +
         '</div>',
@@ -433,8 +445,8 @@ The fetch pipeline runs in five stages, triggered from the Settings tab or via t
 - **Expandable rows** — click any row to reveal the full summary, score reasoning, learning
   objectives, metadata pills, and grouped source links
 - **Acknowledge** — mark items as read; acknowledged items are hidden by default
-- **Score badges** — color-coded (red ≥ 8, orange ≥ 5, muted below)
-- **Native Streamlit components** for smooth, accessible interface
+- **Score badges** — amber for priority items, bronze for mid-signal, muted steel for lower-signal scans
+- **Analyst Terminal theme** — dark graphite surfaces, mono labels, compact controls, and faster scan paths
 
 ---
 
@@ -483,7 +495,7 @@ All configuration is managed from the Settings tab:
 |---|---|
 | **Scoring** | Claude Sonnet 4.5 via Anthropic API |
 | **Learning Objectives** | Claude Opus 4.6 via Anthropic API |
-| **Dashboard** | Streamlit with auto light/dark minimalist theme |
+| **Dashboard** | Streamlit with a dark-first Analyst Terminal theme |
 | **Database** | SQLite with automatic schema migrations |
 | **RSS parsing** | `feedparser` |
 | **HTTP client** | `httpx` |
