@@ -570,46 +570,49 @@ class Database:
         rows = self.conn.execute(sql, params).fetchall()
         items = [self._row_to_item(r) for r in rows]
 
-        # Bucket items by day
-        day_buckets: dict[str, list[ProcessedNewsItem]] = {}
+        # Fold groups FIRST across the full window so a group that spans
+        # multiple days collapses to a single (primary, [related]) pair on
+        # the primary's publish day, rather than showing partial fragments
+        # on each day.
+        groups_by_gid: dict[int, list[ProcessedNewsItem]] = {}
+        ungrouped_items: list[ProcessedNewsItem] = []
         for item in items:
-            if item.published:
-                day_key = item.published.strftime("%Y-%m-%d")
+            if item.group_id is not None:
+                groups_by_gid.setdefault(item.group_id, []).append(item)
+            else:
+                ungrouped_items.append(item)
+
+        folded: list[tuple[ProcessedNewsItem, list[ProcessedNewsItem]]] = []
+        from datetime import datetime as _dt
+
+        def _sort_key(it: ProcessedNewsItem):
+            return (
+                it.score,
+                it.published or _dt.min.replace(tzinfo=None),
+            )
+
+        for members in groups_by_gid.values():
+            members.sort(key=_sort_key, reverse=True)
+            folded.append((members[0], members[1:]))
+        for item in ungrouped_items:
+            folded.append((item, []))
+
+        # Bucket by the PRIMARY's publish day
+        day_buckets: dict[str, list[tuple[ProcessedNewsItem, list[ProcessedNewsItem]]]] = {}
+        for primary, related in folded:
+            if primary.published:
+                day_key = primary.published.strftime("%Y-%m-%d")
             else:
                 day_key = "Unknown"
-            day_buckets.setdefault(day_key, []).append(item)
+            day_buckets.setdefault(day_key, []).append((primary, related))
 
-        # Sort days descending, limit
         sorted_days = sorted(day_buckets.keys(), reverse=True)[:limit_days]
 
         result: OrderedDict[str, list[tuple[ProcessedNewsItem, list[ProcessedNewsItem]]]] = OrderedDict()
         for day in sorted_days:
             day_items = day_buckets[day]
-            # Sort by score descending within each day
-            day_items.sort(key=lambda x: x.score, reverse=True)
-
-            # Group by group_id
-            groups: dict[int, list[ProcessedNewsItem]] = {}
-            ungrouped: list[ProcessedNewsItem] = []
-            for item in day_items:
-                if item.group_id is not None:
-                    groups.setdefault(item.group_id, []).append(item)
-                else:
-                    ungrouped.append(item)
-
-            grouped_list: list[tuple[ProcessedNewsItem, list[ProcessedNewsItem]]] = []
-            seen_groups: set[int] = set()
-            for item in day_items:
-                if item.group_id is not None:
-                    if item.group_id in seen_groups:
-                        continue
-                    seen_groups.add(item.group_id)
-                    members = groups[item.group_id]
-                    grouped_list.append((members[0], members[1:]))
-                else:
-                    grouped_list.append((item, []))
-
-            result[day] = grouped_list
+            day_items.sort(key=lambda pair: pair[0].score, reverse=True)
+            result[day] = day_items
 
         return result
 

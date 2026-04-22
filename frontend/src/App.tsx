@@ -31,6 +31,7 @@ const DEFAULT_FILTERS: Filters = {
   preset: "30d",
   scoreMin: 1,
   showAck: false,
+  sourceTypes: [],
 };
 
 function findStory(days: Day[], id: number | null): Story | null {

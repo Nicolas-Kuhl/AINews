@@ -87,6 +87,35 @@ html, body, #root {
   padding: 80px 0;
 }
 
+/* Source-type filter chips (sidebar, multi-select) */
+.source-type-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.source-type-chip {
+  appearance: none;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  padding: 6px 10px;
+  border: 1px solid var(--rule);
+  background: transparent;
+  color: var(--ink-3);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.12s, color 0.12s, border-color 0.12s;
+}
+.source-type-chip:hover {
+  color: var(--ink);
+  border-color: var(--rule-strong);
+}
+.source-type-chip.is-active {
+  background: var(--ink);
+  color: var(--bg);
+  border-color: var(--ink);
+}
+
 /* New 3-type source classification (Official / Web Scrape / Newsletter).
    Colors borrowed from the handoff's Press + Newsletter palettes so paper
    and terminal both read consistently. */

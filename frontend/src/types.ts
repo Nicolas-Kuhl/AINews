@@ -57,6 +57,7 @@ export type Filters = {
   preset: Preset;
   scoreMin: number;
   showAck: boolean;
+  sourceTypes: SourceType[];
 };
 
 export type Theme = "paper" | "terminal";

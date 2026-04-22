@@ -1,4 +1,4 @@
-import { Filters, Nav, Preset, Theme } from "../types";
+import { Filters, Nav, Preset, SourceType, Theme } from "../types";
 
 type Props = {
   nav: Nav;
@@ -27,6 +27,8 @@ const PRESETS: Array<{ key: Preset; label: string }> = [
 ];
 
 const SCORE_MINS = [1, 5, 7, 8, 9];
+
+const SOURCE_TYPES: SourceType[] = ["Official", "Newsletter", "Web Scrape"];
 
 export function Sidebar({
   nav,
@@ -138,6 +140,30 @@ export function Sidebar({
               {n}+
             </button>
           ))}
+        </div>
+      </div>
+
+      <div className="filter-group">
+        <div className="filter-label">Source type</div>
+        <div className="source-type-chips">
+          {SOURCE_TYPES.map((t) => {
+            const active = filters.sourceTypes.includes(t);
+            return (
+              <button
+                key={t}
+                type="button"
+                className={`source-type-chip ${active ? "is-active" : ""}`}
+                onClick={() => {
+                  const next = active
+                    ? filters.sourceTypes.filter((x) => x !== t)
+                    : [...filters.sourceTypes, t];
+                  setFilters({ ...filters, sourceTypes: next });
+                }}
+              >
+                {t}
+              </button>
+            );
+          })}
         </div>
       </div>
 

@@ -52,6 +52,11 @@ function navPredicate(story: Story, nav: Nav): boolean {
   }
 }
 
+function matchesSourceType(story: Story, sourceTypes: Filters["sourceTypes"]): boolean {
+  if (!sourceTypes || sourceTypes.length === 0) return true;
+  return sourceTypes.includes(story.source_meta.type);
+}
+
 export function filterStories(
   byDay: Day[],
   filters: Filters,
@@ -66,6 +71,7 @@ export function filterStories(
           (filters.showAck || !s.acknowledged) &&
           withinPreset(s, filters.preset) &&
           matchesSearch(s, filters.search) &&
+          matchesSourceType(s, filters.sourceTypes) &&
           navPredicate(s, nav)
       ),
     }))
