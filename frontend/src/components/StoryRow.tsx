@@ -3,6 +3,7 @@ import {
   absoluteTime,
   categoryDisplay,
   categorySlug,
+  clipSentences,
   markMarginColor,
   relativeTime,
   scoreBand,
@@ -77,7 +78,7 @@ export function StoryRow({
         </div>
         <div className="row-title">{story.title}</div>
         {story.summary && (
-          <div className="row-dek">{story.summary}</div>
+          <div className="row-dek">{clipSentences(story.summary, 3)}</div>
         )}
       </div>
 

@@ -61,3 +61,18 @@ export function markMarginColor(hue: number, theme: "paper" | "terminal"): strin
     ? `oklch(96% 0.04 ${hue})`
     : `oklch(28% 0.06 ${hue})`;
 }
+
+/**
+ * Clip a summary to at most ``maxSentences`` sentences. Preserves the full
+ * summary when shorter; the Reader drawer always shows the untrimmed text.
+ */
+export function clipSentences(text: string | null, maxSentences: number): string {
+  if (!text) return "";
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (!normalized) return "";
+  // Capture each sentence plus its trailing punctuation + whitespace.
+  const parts = normalized.match(/[^.!?]+[.!?]+(\s|$)/g);
+  if (!parts) return normalized;
+  const kept = parts.slice(0, maxSentences).join("").trim();
+  return kept || normalized;
+}
