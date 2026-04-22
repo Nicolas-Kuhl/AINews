@@ -224,7 +224,15 @@ def _render_triage_preview():
           .main > div, .block-container { padding: 0 !important; max-width: 100% !important; }
           [data-testid="stAppViewContainer"] { background: #FAFAFA; }
           iframe[title="ainews.frontend.ainews_reader"] { border: 0; width: 100vw; }
+          .legacy-back { position: fixed; bottom: 12px; right: 14px; z-index: 9999;
+                         font-family: 'Geist Mono', ui-monospace, monospace; font-size: 10px;
+                         letter-spacing: 0.12em; text-transform: uppercase;
+                         color: #71717A; text-decoration: none; padding: 6px 10px;
+                         border: 1px solid #E4E4E7; border-radius: 6px;
+                         background: rgba(255,255,255,0.9); }
+          .legacy-back:hover { color: #0A0A0A; border-color: #D4D4D8; }
         </style>
+        <a class="legacy-back" href="?ui=legacy" target="_self">Legacy UI</a>
         """,
         unsafe_allow_html=True,
     )
@@ -251,7 +259,10 @@ def _render_triage_preview():
 
 
 def main():
-    if st.query_params.get("ui") == "reader":
+    # Default: new triage-console UI. Use ?ui=legacy to fall back to the
+    # classic Streamlit dashboard while Phase 2 (briefs, source metadata)
+    # is in flight.
+    if st.query_params.get("ui") != "legacy":
         _render_triage_preview()
         return
 
