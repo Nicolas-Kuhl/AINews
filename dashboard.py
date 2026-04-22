@@ -7,6 +7,7 @@ from pathlib import Path
 import yaml
 
 from ainews.config import load_config
+from ainews.frontend import reader as triage_reader
 from ainews.storage.database import Database
 from dashboard_components import _render_news_list, _render_digest, _render_settings_tab, load_css
 
@@ -168,7 +169,38 @@ def check_authentication():
     return True
 
 
+def _render_triage_preview():
+    """Phase 1 preview: render the new React triage console against a stub payload.
+
+    Enable with ``?ui=reader`` in the URL. Replaces the entire dashboard body;
+    the legacy UI remains the default until Phase 1 milestones land.
+    """
+
+    st.set_page_config(
+        page_title="AINews",
+        page_icon="📡",
+        layout="wide",
+        initial_sidebar_state="collapsed",
+    )
+    st.markdown(
+        """
+        <style>
+          section[data-testid="stSidebar"], header[data-testid="stHeader"] { display: none !important; }
+          .main > div, .block-container { padding: 0 !important; max-width: 100% !important; }
+          [data-testid="stAppViewContainer"] { background: #FAFAFA; }
+          iframe[title="ainews.frontend.ainews_reader"] { border: 0; width: 100vw; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    triage_reader(by_day=[], theme_default="paper", key="ainews_reader_preview")
+
+
 def main():
+    if st.query_params.get("ui") == "reader":
+        _render_triage_preview()
+        return
+
     st.set_page_config(page_title="AINews", page_icon="📡", layout="wide")
 
     # Check authentication
