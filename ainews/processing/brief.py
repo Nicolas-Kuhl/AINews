@@ -131,29 +131,31 @@ def refresh_briefs(
     today = today or datetime.now(timezone.utc).date()
     result: dict = {"morning": "skipped", "days": {}}
 
-    # Morning Brief for today
+    # Morning Brief for today — always regenerate because new stories keep
+    # arriving during the day; caching only makes sense for historical days.
     today_key = today.isoformat()
-    if force or db.get_morning_brief(today_key) is None:
-        stories = _stories_for_day(db, today_key)
-        if stories:
-            try:
-                paragraph = generate_morning_brief(client, stories, model=model)
-                if paragraph:
-                    db.upsert_morning_brief(today_key, paragraph=paragraph)
-                    result["morning"] = "ok"
-                    log.info("Morning Brief written for %s (%d stories)", today_key, len(stories))
-            except Exception as exc:  # noqa: BLE001
-                log.warning("Morning Brief generation failed for %s: %s", today_key, exc)
-                result["morning"] = f"error: {exc}"
-        else:
-            log.info("Morning Brief: no stories for %s, skipping", today_key)
+    stories = _stories_for_day(db, today_key)
+    if stories:
+        try:
+            paragraph = generate_morning_brief(client, stories, model=model)
+            if paragraph:
+                db.upsert_morning_brief(today_key, paragraph=paragraph)
+                result["morning"] = "ok"
+                log.info("Morning Brief written for %s (%d stories)", today_key, len(stories))
+        except Exception as exc:  # noqa: BLE001
+            log.warning("Morning Brief generation failed for %s: %s", today_key, exc)
+            result["morning"] = f"error: {exc}"
+    else:
+        log.info("Morning Brief: no stories for %s, skipping", today_key)
 
-    # Day Briefs for the last `lookback_days` days
+    # Day Briefs for the last `lookback_days` days. Today is always regenerated
+    # (live data); older days use cache unless --force.
     for offset in range(lookback_days):
         day = today - timedelta(days=offset)
         day_key = day.isoformat()
+        is_today = offset == 0
         existing = db.get_day_briefs([day_key]).get(day_key)
-        if existing and not force:
+        if existing and not force and not is_today:
             result["days"][day_key] = "cached"
             continue
         stories = _stories_for_day(db, day_key)
