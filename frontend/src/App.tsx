@@ -63,10 +63,26 @@ function ReaderApp({ args }: ComponentProps) {
   }, [theme]);
 
   useEffect(() => {
-    const sync = () => Streamlit.setFrameHeight(window.innerHeight);
+    const parentHeight = (): number => {
+      try {
+        return window.top?.innerHeight ?? window.parent.innerHeight;
+      } catch {
+        return window.innerHeight;
+      }
+    };
+    const sync = () => Streamlit.setFrameHeight(parentHeight());
     sync();
+    // Sync on both iframe resize and parent resize — cover both directions.
     window.addEventListener("resize", sync);
-    return () => window.removeEventListener("resize", sync);
+    const parentWindow = window.parent;
+    parentWindow?.addEventListener?.("resize", sync);
+    // Also sync after a tick in case the parent layout hasn't settled.
+    const t = window.setTimeout(sync, 200);
+    return () => {
+      window.removeEventListener("resize", sync);
+      parentWindow?.removeEventListener?.("resize", sync);
+      window.clearTimeout(t);
+    };
   }, []);
 
   // Any time Python hands us a new by_day, drop local overrides — Python has

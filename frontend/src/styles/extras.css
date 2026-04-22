@@ -44,28 +44,41 @@
   font: inherit;
 }
 
-/* Main pane placeholder layout */
-.main-pane {
-  padding: 32px 40px 80px;
-  overflow-y: auto;
-  min-height: 100vh;
+/* Fill the iframe viewport — the handoff CSS caps at 1600px which shows
+   the outer page bg on wide screens. */
+html, body, #root {
+  background: var(--bg);
+  color: var(--ink);
+  height: 100vh;
+  overflow: hidden;
 }
 .app.is-three-pane {
+  max-width: none;
+  margin: 0;
   grid-template-columns: 240px minmax(0, 1fr) 540px;
+  height: 100vh;
+  min-height: 0;
 }
 @media (max-width: 1200px) {
   .app.is-three-pane {
     grid-template-columns: 240px minmax(0, 1fr) 460px;
   }
 }
-.reader-drawer {
-  border-left: 1px solid var(--rule);
-  background: var(--bg);
-  box-shadow: var(--shadow-drawer);
-  padding: 28px 32px 80px;
+
+/* Main pane scroll container — use height (not min-height) so overflow-y
+   actually engages instead of letting content push the page taller. */
+.main-pane {
+  padding: 0 0 80px;
   overflow-y: auto;
-  min-height: 100vh;
+  overflow-x: hidden;
+  height: 100vh;
+  background: var(--bg);
 }
+
+/* The .reader class from the handoff uses --surface which in terminal is
+   subtly lighter than --bg. That's intentional for the drawer to read
+   as elevated; keep it, but ensure the outer shadow doesn't bleed. */
+.reader { width: 100%; max-width: none; }
 
 .empty-msg {
   color: var(--ink-3);
