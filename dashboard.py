@@ -259,10 +259,10 @@ def _render_triage_preview():
 
 
 def main():
-    # Default: new triage-console UI. Use ?ui=legacy to fall back to the
-    # classic Streamlit dashboard while Phase 2 (briefs, source metadata)
-    # is in flight.
-    if st.query_params.get("ui") != "legacy":
+    # Initial rollout: legacy is default, new triage console is opt-in at
+    # ?ui=reader. A follow-up commit will flip this once the console has
+    # been visually validated on EC2.
+    if st.query_params.get("ui") == "reader":
         _render_triage_preview()
         return
 
