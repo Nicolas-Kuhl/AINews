@@ -27,6 +27,7 @@ export type Story = {
   score: number;
   category: string | null;
   summary: string | null;
+  short_summary: string | null;
   score_reasoning: string | null;
   learning_objectives: string | null;
   lo_generated_with_opus: boolean;

@@ -118,6 +118,7 @@ def _story_to_dict(
         "score": primary.score,
         "category": primary.category,
         "summary": primary.summary,
+        "short_summary": primary.short_summary,
         "score_reasoning": primary.score_reasoning,
         "learning_objectives": primary.learning_objectives,
         "lo_generated_with_opus": primary.lo_generated_with_opus,

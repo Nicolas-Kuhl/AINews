@@ -77,8 +77,10 @@ export function StoryRow({
           )}
         </div>
         <div className="row-title">{story.title}</div>
-        {story.summary && (
-          <div className="row-dek">{clipSentences(story.summary, 3)}</div>
+        {(story.short_summary || story.summary) && (
+          <div className="row-dek">
+            {story.short_summary || clipSentences(story.summary, 3)}
+          </div>
         )}
       </div>
 

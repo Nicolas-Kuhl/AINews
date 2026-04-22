@@ -15,21 +15,26 @@ how new tools work, and what they mean for the industry.
 Analyze EACH of the following news items and provide for each.
 When "Article Content" is provided, use it for accurate, in-depth analysis.
 
-1. A detailed summary (4-6 sentences) that:
-   - Explains what happened and why it matters
-   - Highlights the educational angle: what can viewers learn from this?
+1. A short summary (2-3 sentences) — the dek shown next to the headline in
+   the triage list. It must be standalone and self-contained: what happened,
+   the single most important detail, and why a reader should care. No
+   preamble, no bullets, no restating the title.
+2. A detailed summary (4-6 sentences) — the long copy shown in the reading
+   pane. It should:
+   - Explain what happened and why it matters
+   - Highlight the educational angle: what can viewers learn from this?
    - For new releases: explain what's new, what it can do, and why it's important
    - For industry news: explain the industry implications and broader context
-   - Uses clear, accessible language suitable for a general audience
-2. An impact score from 1-10 based on:
+   - Use clear, accessible language suitable for a general audience
+3. An impact score from 1-10 based on:
    - Educational value: Can we teach something meaningful from this?
    - Teaching potential: How well does this translate to visual, engaging content?
    - Significance to the AI industry (new models, breakthroughs = higher)
    - Public interest / viral potential
    - Novelty (truly new vs. incremental update)
-3. Learning objectives (3-5 bullet points): what a course covering this topic should teach.
+4. Learning objectives (3-5 bullet points): what a course covering this topic should teach.
    Each bullet should be a concise, actionable learning objective starting with a verb.
-4. A category — one of: "New Releases", "Research", "Business", or "Developer Tools"
+5. A category — one of: "New Releases", "Research", "Business", or "Developer Tools"
    - "New Releases": New model launches, new product releases, new tool announcements, new API versions, new open-source releases
    - "Research": Research papers, benchmarks, technical analyses, academic publications, novel techniques
    - "Business": Partnerships, funding rounds, acquisitions, hiring, policy, regulation, market analysis, corporate strategy
@@ -43,7 +48,7 @@ Score guide:
 - 1-2: Low relevance (routine, not newsworthy for educational video)
 
 Respond in valid JSON only — a JSON array with one object per item, in the same order as the input.
-Each object must have: {"id": N, "summary": "...", "score": N, "reasoning": "...", "learning_objectives": ["...", "...", "..."], "category": "New Releases" or "Research" or "Business" or "Developer Tools"}
+Each object must have: {"id": N, "short_summary": "...", "summary": "...", "score": N, "reasoning": "...", "learning_objectives": ["...", "...", "..."], "category": "New Releases" or "Research" or "Business" or "Developer Tools"}
 
 NEWS ITEMS:
 {items_text}
@@ -114,6 +119,7 @@ def _score_batch(
 
         score = max(1, min(10, int(data.get("score", 5))))
         summary = data.get("summary", item.description or "")
+        short_summary = data.get("short_summary", "") or ""
         reasoning = data.get("reasoning", "")
         raw_objectives = data.get("learning_objectives", [])
         if isinstance(raw_objectives, list):
@@ -131,7 +137,8 @@ def _score_batch(
         processed.append(ProcessedNewsItem(
             title=item.title, url=item.url, source=item.source,
             published=item.published, content=item.content,
-            summary=summary, score=score, score_reasoning=reasoning,
+            summary=summary, short_summary=short_summary,
+            score=score, score_reasoning=reasoning,
             learning_objectives=learning_objectives,
             category=category, fetched_via=item.fetched_via,
         ))

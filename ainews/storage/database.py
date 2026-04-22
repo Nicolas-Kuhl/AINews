@@ -156,6 +156,15 @@ class Database:
             self.conn.commit()
         except sqlite3.OperationalError:
             pass
+        # Migrate: add short_summary column if missing (2-3 sentence dek used
+        # in row view; the long `summary` remains the Reader drawer's copy)
+        try:
+            self.conn.execute(
+                "ALTER TABLE news_items ADD COLUMN short_summary TEXT DEFAULT ''"
+            )
+            self.conn.commit()
+        except sqlite3.OperationalError:
+            pass
         # Add index on processed_at for fast "last 24 hours" queries
         self.conn.execute(SCHEMA_PROCESSED_AT_INDEX)
         # Create feed_scans table for per-feed scan interval tracking
@@ -221,14 +230,15 @@ class Database:
     def insert(self, item: ProcessedNewsItem) -> int:
         cursor = self.conn.execute(
             """INSERT OR IGNORE INTO news_items
-               (title, url, source, published, summary, content, score, score_reasoning, learning_objectives, category, fetched_via, processed_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               (title, url, source, published, summary, short_summary, content, score, score_reasoning, learning_objectives, category, fetched_via, processed_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 item.title,
                 item.url,
                 item.source,
                 item.published.isoformat() if item.published else None,
                 item.summary,
+                item.short_summary,
                 item.content,
                 item.score,
                 item.score_reasoning,
@@ -240,6 +250,13 @@ class Database:
         )
         self.conn.commit()
         return cursor.lastrowid
+
+    def update_short_summary(self, item_id: int, short_summary: str) -> None:
+        self.conn.execute(
+            "UPDATE news_items SET short_summary = ? WHERE id = ?",
+            (short_summary, item_id),
+        )
+        self.conn.commit()
 
     def acknowledge(self, item_id: int):
         self.conn.execute(
@@ -759,6 +776,10 @@ class Database:
             starred = bool(row["starred"])
         except (IndexError, KeyError):
             starred = False
+        try:
+            short_summary = row["short_summary"] or ""
+        except (IndexError, KeyError):
+            short_summary = ""
         return ProcessedNewsItem(
             id=row["id"],
             title=row["title"],
@@ -777,6 +798,7 @@ class Database:
             group_id=group_id,
             lo_generated_with_opus=lo_generated_with_opus,
             starred=starred,
+            short_summary=short_summary,
         )
 
     def __enter__(self):

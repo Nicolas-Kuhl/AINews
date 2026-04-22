@@ -23,6 +23,7 @@ class ProcessedNewsItem:
     source: str
     published: Optional[datetime] = None
     summary: str = ""
+    short_summary: str = ""
     content: Optional[str] = None  # full article text
     score: int = 0
     score_reasoning: str = ""
