@@ -293,11 +293,47 @@ def _render_triage_preview():
                 st.rerun()
 
 
+def _render_settings_standalone():
+    """Render the existing Settings tab as a dedicated page (for the new UI).
+
+    Reached via ``?settings=1``. Keeps the existing auth + CSS chrome so the
+    experience matches the legacy dashboard, with a small "Back to dashboard"
+    link that returns to the triage console.
+    """
+
+    st.set_page_config(page_title="AINews · Settings", page_icon="📡", layout="wide")
+    check_authentication()
+    load_css(PROJECT_ROOT / "assets" / "style.css")
+    st.markdown(
+        """
+        <style>
+          .settings-back { display: inline-flex; align-items: center; gap: 6px;
+                           font-family: 'Geist Mono', ui-monospace, monospace;
+                           font-size: 11px; letter-spacing: 0.12em;
+                           text-transform: uppercase; color: #71717A;
+                           text-decoration: none; margin-bottom: 16px; }
+          .settings-back:hover { color: #0A0A0A; }
+        </style>
+        <a class="settings-back" href="/" target="_self">← Back to dashboard</a>
+        """,
+        unsafe_allow_html=True,
+    )
+    cfg = load_config()
+    db = Database(cfg["db_path"])
+    try:
+        _render_settings_tab(cfg, db, PROJECT_ROOT)
+    finally:
+        db.close()
+
+
 def main():
-    # Initial rollout: legacy is default, new triage console is opt-in at
-    # ?ui=reader. A follow-up commit will flip this once the console has
-    # been visually validated on EC2.
-    if st.query_params.get("ui") == "reader":
+    # Default: new triage console. Settings gets its own standalone route.
+    # Legacy dashboard remains at ?ui=legacy.
+    if st.query_params.get("settings") == "1":
+        _render_settings_standalone()
+        return
+
+    if st.query_params.get("ui") != "legacy":
         _render_triage_preview()
         return
 

@@ -64,6 +64,22 @@ export function Sidebar({
                 : item.key === "all" || item.key === "digest"
                 ? counts.all
                 : null;
+            // "Settings" leaves the component entirely — navigate the parent
+            // to the Settings-standalone Streamlit route.
+            if (item.key === "settings") {
+              return (
+                <a
+                  key={item.key}
+                  className="nav-item"
+                  href="?settings=1"
+                  target="_top"
+                  rel="noreferrer"
+                >
+                  <span>{item.label}</span>
+                  <span className="nav-item-count">↗</span>
+                </a>
+              );
+            }
             return (
               <button
                 key={item.key}
