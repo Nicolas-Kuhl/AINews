@@ -82,6 +82,26 @@ export function StoryRow({
             {story.short_summary || clipSentences(story.summary, 3)}
           </div>
         )}
+        {story.related.length > 0 && (
+          <div
+            className="row-sources"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span className="row-sources-label">Also covered:</span>
+            {story.related.map((r, idx) => (
+              <a
+                key={`${r.url}-${idx}`}
+                href={r.url}
+                target="_blank"
+                rel="noreferrer"
+                className="row-source-link"
+                title={r.title}
+              >
+                {r.source}
+              </a>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="row-published">

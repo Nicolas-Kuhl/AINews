@@ -86,3 +86,54 @@ html, body, #root {
   text-align: center;
   padding: 80px 0;
 }
+
+/* Related sources inline in the story row (middle pane) */
+.row-sources {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.row-sources-label {
+  color: var(--ink-4);
+  font-weight: 500;
+}
+.row-source-link {
+  color: var(--ink-3);
+  text-decoration: none;
+  border-bottom: 1px dotted transparent;
+  transition: color 0.12s, border-color 0.12s;
+}
+.row-source-link:hover {
+  color: var(--ink);
+  border-bottom-color: var(--ink-3);
+}
+
+/* Reader byline — entire row is a clickable link */
+.reader-byline-link {
+  text-decoration: none;
+  color: inherit;
+  border-radius: 6px;
+  padding: 14px 6px;
+  margin: 0 -6px 28px;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  transition: background-color 0.12s;
+}
+.reader-byline-link:hover {
+  background: var(--surface);
+}
+.reader-byline-link:hover .reader-byline-ext {
+  color: var(--accent);
+}
+/* Override the default .reader-byline border/margin when it's a link */
+.reader-byline.reader-byline-link {
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+}

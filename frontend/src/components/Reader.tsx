@@ -121,7 +121,13 @@ export function Reader({
           </div>
         )}
 
-        <div className="reader-byline">
+        <a
+          className="reader-byline reader-byline-link"
+          href={story.url}
+          target="_blank"
+          rel="noreferrer"
+          aria-label={`Open original story from ${story.source_meta.short}`}
+        >
           <div
             className="reader-byline-logo"
             style={{
@@ -149,16 +155,14 @@ export function Reader({
               {story.fetched_via ? ` · via ${story.fetched_via}` : ""}
             </div>
           </div>
-          <a
+          <span
             className={`reader-byline-ext ${sourceTypeClass(story.source_meta.type)}`}
-            href={story.url}
-            target="_blank"
-            rel="noreferrer"
             style={{ marginLeft: "auto" }}
+            aria-hidden="true"
           >
             ↗
-          </a>
-        </div>
+          </span>
+        </a>
 
         {story.summary && story.summary.length > 240 ? null : null}
 
