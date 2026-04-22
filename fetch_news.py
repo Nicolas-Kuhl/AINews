@@ -267,6 +267,16 @@ def main():
     logger.info("\n[8/8] Generating RSS feed...")
     rss_count = _generate_rss_feed(db, cfg, logger)
 
+    # 8b. Refresh editorial briefs (Morning + last N Day Briefs) for the
+    # triage console. Failures are non-fatal.
+    try:
+        from ainews.processing.brief import refresh_briefs
+        logger.info("\n[8b] Refreshing editorial briefs...")
+        brief_summary = refresh_briefs(db, client, logger=logger)
+        logger.info(f"  Briefs: morning={brief_summary.get('morning')} days={brief_summary.get('days')}")
+    except Exception as brief_exc:  # noqa: BLE001
+        logger.warning(f"  Brief refresh failed (non-fatal): {brief_exc}")
+
     db.close()
 
     # Summary
