@@ -583,13 +583,19 @@ class Database:
                 ungrouped_items.append(item)
 
         folded: list[tuple[ProcessedNewsItem, list[ProcessedNewsItem]]] = []
-        from datetime import datetime as _dt
+        from datetime import datetime as _dt, timezone as _tz
+
+        # Historical rows were stored without timezones; normalise to UTC so
+        # sort keys don't mix naive and aware datetimes.
+        def _norm(d):
+            if d is None:
+                return _dt.min.replace(tzinfo=_tz.utc)
+            if d.tzinfo is None:
+                return d.replace(tzinfo=_tz.utc)
+            return d
 
         def _sort_key(it: ProcessedNewsItem):
-            return (
-                it.score,
-                it.published or _dt.min.replace(tzinfo=None),
-            )
+            return (it.score, _norm(it.published))
 
         for members in groups_by_gid.values():
             members.sort(key=_sort_key, reverse=True)
