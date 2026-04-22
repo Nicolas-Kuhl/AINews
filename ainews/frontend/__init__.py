@@ -18,6 +18,7 @@ _reader = components.declare_component(
 def reader(
     by_day: Iterable[Mapping[str, Any]],
     *,
+    morning_brief: Mapping[str, Any] | None = None,
     theme_default: str = "paper",
     key: str | None = None,
 ) -> Any:
@@ -26,9 +27,12 @@ def reader(
     Parameters
     ----------
     by_day:
-        Iterable of ``{"date", "label", "stories"}`` dicts, one per day,
-        pre-sorted newest first. Each story is the enriched payload produced
-        by :func:`ainews.dashboard.payload.build_day_payload`.
+        Iterable of ``{"date", "label", "brief", "stories"}`` dicts, one per
+        day, pre-sorted newest first. Each story is the enriched payload
+        produced by :func:`ainews.dashboard.payload.build_by_day_payload`.
+    morning_brief:
+        Optional ``{"date", "generated_at", "paragraph", "stats_json"}`` dict
+        for today's Morning Brief. Pass ``None`` to suppress the hero.
     theme_default:
         Initial theme — ``"paper"`` or ``"terminal"``. The component owns
         subsequent toggling via ``localStorage``.
@@ -38,6 +42,7 @@ def reader(
 
     return _reader(
         by_day=list(by_day),
+        morning_brief=morning_brief,
         theme_default=theme_default,
         default=None,
         key=key,

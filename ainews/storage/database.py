@@ -59,6 +59,33 @@ CREATE TABLE IF NOT EXISTS processed_emails (
 );
 """
 
+SCHEMA_SOURCES = """
+CREATE TABLE IF NOT EXISTS sources (
+    name TEXT PRIMARY KEY,
+    short TEXT NOT NULL,
+    mark TEXT NOT NULL,
+    hue INTEGER NOT NULL,
+    type TEXT NOT NULL CHECK (type IN ('Official','Press','Research','Platform','Newsletter'))
+);
+"""
+
+SCHEMA_MORNING_BRIEFS = """
+CREATE TABLE IF NOT EXISTS morning_briefs (
+    date TEXT PRIMARY KEY,
+    generated_at TEXT NOT NULL,
+    paragraph TEXT NOT NULL,
+    stats_json TEXT
+);
+"""
+
+SCHEMA_DAY_BRIEFS = """
+CREATE TABLE IF NOT EXISTS day_briefs (
+    date TEXT PRIMARY KEY,
+    generated_at TEXT NOT NULL,
+    paragraph TEXT NOT NULL
+);
+"""
+
 
 class Database:
     def __init__(self, db_path: str):
@@ -135,6 +162,10 @@ class Database:
         self.conn.executescript(SCHEMA_FEED_SCANS)
         # Create processed_emails table for newsletter dedup
         self.conn.executescript(SCHEMA_PROCESSED_EMAILS)
+        # Phase 2: sources metadata + Morning/Day briefs
+        self.conn.executescript(SCHEMA_SOURCES)
+        self.conn.executescript(SCHEMA_MORNING_BRIEFS)
+        self.conn.executescript(SCHEMA_DAY_BRIEFS)
         self.conn.commit()
 
     def get_feed_last_scanned(self, feed_name: str) -> Optional[str]:
@@ -528,6 +559,88 @@ class Database:
             "SELECT DISTINCT source FROM news_items ORDER BY source"
         ).fetchall()
         return [r["source"] for r in rows]
+
+    # -------- sources metadata --------
+
+    def upsert_source_meta(
+        self, name: str, *, short: str, mark: str, hue: int, type: str
+    ) -> None:
+        self.conn.execute(
+            """INSERT INTO sources (name, short, mark, hue, type)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(name) DO UPDATE SET
+                 short = excluded.short,
+                 mark = excluded.mark,
+                 hue = excluded.hue,
+                 type = excluded.type""",
+            (name, short, mark, int(hue), type),
+        )
+        self.conn.commit()
+
+    def get_source_metas(self) -> dict[str, dict]:
+        rows = self.conn.execute(
+            "SELECT name, short, mark, hue, type FROM sources"
+        ).fetchall()
+        return {
+            r["name"]: {
+                "short": r["short"],
+                "mark": r["mark"],
+                "hue": r["hue"],
+                "type": r["type"],
+            }
+            for r in rows
+        }
+
+    # -------- briefs --------
+
+    def get_morning_brief(self, date: str) -> Optional[dict]:
+        row = self.conn.execute(
+            "SELECT date, generated_at, paragraph, stats_json FROM morning_briefs WHERE date = ?",
+            (date,),
+        ).fetchone()
+        if not row:
+            return None
+        return {
+            "date": row["date"],
+            "generated_at": row["generated_at"],
+            "paragraph": row["paragraph"],
+            "stats_json": row["stats_json"],
+        }
+
+    def upsert_morning_brief(
+        self, date: str, *, paragraph: str, stats_json: Optional[str] = None
+    ) -> None:
+        self.conn.execute(
+            """INSERT INTO morning_briefs (date, generated_at, paragraph, stats_json)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT(date) DO UPDATE SET
+                 generated_at = excluded.generated_at,
+                 paragraph = excluded.paragraph,
+                 stats_json = excluded.stats_json""",
+            (date, datetime.now(timezone.utc).isoformat(), paragraph, stats_json),
+        )
+        self.conn.commit()
+
+    def get_day_briefs(self, dates: list[str]) -> dict[str, str]:
+        if not dates:
+            return {}
+        placeholders = ",".join("?" for _ in dates)
+        rows = self.conn.execute(
+            f"SELECT date, paragraph FROM day_briefs WHERE date IN ({placeholders})",
+            dates,
+        ).fetchall()
+        return {r["date"]: r["paragraph"] for r in rows}
+
+    def upsert_day_brief(self, date: str, paragraph: str) -> None:
+        self.conn.execute(
+            """INSERT INTO day_briefs (date, generated_at, paragraph)
+               VALUES (?, ?, ?)
+               ON CONFLICT(date) DO UPDATE SET
+                 generated_at = excluded.generated_at,
+                 paragraph = excluded.paragraph""",
+            (date, datetime.now(timezone.utc).isoformat(), paragraph),
+        )
+        self.conn.commit()
 
     def get_stats(self) -> dict:
         row = self.conn.execute(

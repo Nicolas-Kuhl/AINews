@@ -7,7 +7,7 @@ from pathlib import Path
 import yaml
 
 from ainews.config import load_config
-from ainews.dashboard.payload import build_by_day_payload
+from ainews.dashboard.payload import build_by_day_payload, ensure_source_metas
 from ainews.frontend import reader as triage_reader
 from ainews.storage.database import Database
 from dashboard_components import _render_news_list, _render_digest, _render_settings_tab, load_css
@@ -181,9 +181,16 @@ def _get_triage_payload(db_path: str, min_score: int, limit_days: int, cache_bus
             show_acknowledged=True,
             limit_days=limit_days,
         )
+        source_metas = ensure_source_metas(db)
+        day_briefs = db.get_day_briefs(list(raw.keys()))
+        payload = build_by_day_payload(
+            raw, source_metas=source_metas, day_briefs=day_briefs
+        )
+        today_key = datetime.now(timezone.utc).date().isoformat()
+        morning = db.get_morning_brief(today_key)
     finally:
         db.close()
-    return build_by_day_payload(raw)
+    return {"by_day": payload, "morning_brief": morning}
 
 
 def _apply_triage_events(db_path: str, events: list[dict]) -> None:
@@ -246,16 +253,12 @@ def _render_triage_preview():
     )
     cfg = load_config()
     cache_bust = st.session_state.get("triage_cache_bust", 0)
-    payload = _get_triage_payload(
+    bundle = _get_triage_payload(
         cfg["db_path"], min_score=1, limit_days=30, cache_bust=cache_bust
     )
-    # Diagnostic sentinel so that if the iframe fails to mount we at least
-    # know _render_triage_preview reached this point.
-    st.caption(
-        f"Triage console · {sum(len(d['stories']) for d in payload)} stories loaded"
-    )
     result = triage_reader(
-        by_day=payload,
+        by_day=bundle["by_day"],
+        morning_brief=bundle["morning_brief"],
         theme_default="paper",
         key="ainews_reader_preview",
     )
