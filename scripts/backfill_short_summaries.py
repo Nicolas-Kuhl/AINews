@@ -36,7 +36,7 @@ most important detail, and why a reader should care. Do not restate the
 title. Do not start with a preamble. Plain prose, no bullets, no markdown.
 
 Respond in valid JSON ONLY — a JSON array with one object per item in the
-same order, each shaped as {"id": N, "short_summary": "..."}.
+same order, each shaped as {{"id": N, "short_summary": "..."}}.
 
 ITEMS:
 {items_text}
