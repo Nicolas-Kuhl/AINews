@@ -12,6 +12,8 @@ type Props = {
   onClose: () => void;
   onToggleAck: (story: Story) => void;
   onToggleStar: (story: Story) => void;
+  onGenerateLO: (story: Story) => void;
+  generatingLO: boolean;
 };
 
 function verdict(score: number): string {
@@ -44,6 +46,8 @@ export function Reader({
   onClose,
   onToggleAck,
   onToggleStar,
+  onGenerateLO,
+  generatingLO,
 }: Props) {
   if (!story) {
     return (
@@ -179,8 +183,13 @@ export function Reader({
           {story.learning_objectives
             ? renderLearningObjectives(story.learning_objectives)
             : (
-              <button type="button" className="reader-gen-btn" disabled>
-                Generate with Opus (coming in Phase 2)
+              <button
+                type="button"
+                className={`reader-gen-btn ${generatingLO ? "loading" : ""}`}
+                disabled={generatingLO}
+                onClick={() => onGenerateLO(story)}
+              >
+                {generatingLO ? "Generating with Opus…" : "Generate with Opus"}
               </button>
             )}
         </div>

@@ -45,7 +45,8 @@ function findStory(days: Day[], id: number | null): Story | null {
 
 type Event =
   | { type: "ack"; id: number; value: boolean }
-  | { type: "star"; id: number; value: boolean };
+  | { type: "star"; id: number; value: boolean }
+  | { type: "gen_lo"; id: number };
 
 function ReaderApp({ args }: ComponentProps) {
   const { by_day, morning_brief, theme_default }: Args = args;
@@ -56,6 +57,7 @@ function ReaderApp({ args }: ComponentProps) {
   // Optimistic local overrides that get cleared once Python echoes fresh data
   const [localAck, setLocalAck] = useState<Record<number, boolean>>({});
   const [localStar, setLocalStar] = useState<Record<number, boolean>>({});
+  const [generatingIds, setGeneratingIds] = useState<Set<number>>(new Set());
 
   const seqRef = useRef(0);
 
@@ -92,6 +94,7 @@ function ReaderApp({ args }: ComponentProps) {
   useEffect(() => {
     setLocalAck({});
     setLocalStar({});
+    setGeneratingIds(new Set());
   }, [by_day]);
 
   const sendEvent = useCallback((event: Event) => {
@@ -153,6 +156,18 @@ function ReaderApp({ args }: ComponentProps) {
     [sendEvent]
   );
 
+  const handleGenerateLO = useCallback(
+    (story: Story) => {
+      setGeneratingIds((prev) => {
+        const next = new Set(prev);
+        next.add(story.id);
+        return next;
+      });
+      sendEvent({ type: "gen_lo", id: story.id });
+    },
+    [sendEvent]
+  );
+
   const selectedStory = findStory(days, selectedId);
 
   const handleToggleAckCurrent = useCallback(() => {
@@ -206,6 +221,10 @@ function ReaderApp({ args }: ComponentProps) {
         onClose={handleCloseReader}
         onToggleAck={handleToggleAck}
         onToggleStar={handleToggleStar}
+        onGenerateLO={handleGenerateLO}
+        generatingLO={
+          selectedStory ? generatingIds.has(selectedStory.id) : false
+        }
       />
     </div>
   );

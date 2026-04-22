@@ -285,6 +285,12 @@ class Database:
         )
         self.conn.commit()
 
+    def get_by_id(self, item_id: int) -> Optional[ProcessedNewsItem]:
+        row = self.conn.execute(
+            "SELECT * FROM news_items WHERE id = ?", (item_id,)
+        ).fetchone()
+        return self._row_to_item(row) if row else None
+
     def query(
         self,
         min_score: int = 0,
