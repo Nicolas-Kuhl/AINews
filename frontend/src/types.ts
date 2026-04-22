@@ -41,7 +41,15 @@ export type Story = {
 export type Day = {
   date: string;
   label: string;
+  brief?: string | null;
   stories: Story[];
+};
+
+export type MorningBrief = {
+  date: string;
+  generated_at: string;
+  paragraph: string;
+  stats_json?: string | null;
 };
 
 export type Nav = "digest" | "all" | "unread" | "starred" | "settings";

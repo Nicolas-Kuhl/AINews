@@ -7,6 +7,7 @@ import {
 import { Sidebar } from "./components/Sidebar";
 import { DigestView } from "./components/DigestView";
 import { Reader } from "./components/Reader";
+import { MorningBriefHero } from "./components/MorningBrief";
 import { useTheme } from "./lib/theme";
 import {
   countStories,
@@ -15,12 +16,13 @@ import {
   unreadCount,
 } from "./lib/filter";
 import { useKeyboardNav } from "./lib/keyboard";
-import { Day, Filters, Nav, Story, Theme } from "./types";
+import { Day, Filters, MorningBrief, Nav, Story, Theme } from "./types";
 import "./styles/triage.css";
 import "./styles/extras.css";
 
 type Args = {
   by_day: Day[];
+  morning_brief?: MorningBrief | null;
   theme_default?: Theme;
 };
 
@@ -46,7 +48,7 @@ type Event =
   | { type: "star"; id: number; value: boolean };
 
 function ReaderApp({ args }: ComponentProps) {
-  const { by_day, theme_default }: Args = args;
+  const { by_day, morning_brief, theme_default }: Args = args;
   const [theme, , toggleTheme] = useTheme(theme_default ?? "paper");
   const [nav, setNav] = useState<Nav>("digest");
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
@@ -183,14 +185,19 @@ function ReaderApp({ args }: ComponentProps) {
             Settings view lives in the legacy dashboard for now.
           </div>
         ) : (
-          <DigestView
-            days={filteredDays}
-            theme={theme}
-            groupByDay={groupByDay}
-            selectedId={selectedId}
-            onSelect={handleSelect}
-            onToggleAck={handleToggleAck}
-          />
+          <>
+            {nav === "digest" && (
+              <MorningBriefHero brief={morning_brief ?? null} days={filteredDays} />
+            )}
+            <DigestView
+              days={filteredDays}
+              theme={theme}
+              groupByDay={groupByDay}
+              selectedId={selectedId}
+              onSelect={handleSelect}
+              onToggleAck={handleToggleAck}
+            />
+          </>
         )}
       </main>
       <Reader

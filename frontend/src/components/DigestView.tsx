@@ -2,6 +2,7 @@ import { Day, Story, Theme } from "../types";
 import { DayHeader } from "./DayHeader";
 import { StoryRow } from "./StoryRow";
 import { useDayCollapse } from "../lib/collapse";
+import { renderInlineMarkdown } from "../lib/markdown";
 
 type Props = {
   days: Day[];
@@ -49,6 +50,7 @@ export function DigestView({
     <div>
       {days.map((day) => {
         const collapsed = isCollapsed(day.date);
+        const highCount = day.stories.filter((s) => s.score >= 8).length;
         return (
           <section key={day.date}>
             <DayHeader
@@ -58,6 +60,20 @@ export function DigestView({
               collapsed={collapsed}
               onToggle={() => toggle(day.date)}
             />
+            {!collapsed && day.brief && (
+              <div className="day-summary" id={`day-${day.date}-brief`}>
+                <div className="day-summary-head">
+                  <span className="day-summary-kicker">Day Brief</span>
+                  <span className="day-summary-meta">
+                    {day.stories.length} stories
+                    {highCount > 0 ? ` · ${highCount} scored 8+` : ""}
+                  </span>
+                </div>
+                <p className="day-summary-text">
+                  {renderInlineMarkdown(day.brief)}
+                </p>
+              </div>
+            )}
             {!collapsed && (
               <div id={`day-${day.date}-body`}>
                 {day.stories.map((story) => (
