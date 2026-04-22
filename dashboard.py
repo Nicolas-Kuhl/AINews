@@ -220,10 +220,18 @@ def _render_triage_preview():
     st.markdown(
         """
         <style>
-          section[data-testid="stSidebar"], header[data-testid="stHeader"] { display: none !important; }
+          header[data-testid="stHeader"] { display: none !important; }
           .main > div, .block-container { padding: 0 !important; max-width: 100% !important; }
           [data-testid="stAppViewContainer"] { background: #FAFAFA; }
-          iframe[title="ainews.frontend.ainews_reader"] { border: 0; width: 100vw; }
+          /* Streamlit component iframes: force full viewport height so the
+             3-pane layout inside fills the screen. The title selector in
+             Streamlit 1.54 is "streamlit_component.v1.iframe". */
+          iframe[title^="ainews."], iframe[srcdoc], div[data-testid="stCustomComponentV1"] iframe {
+            border: 0 !important;
+            width: 100% !important;
+            min-height: 100vh !important;
+            height: 100vh !important;
+          }
           .legacy-back { position: fixed; bottom: 12px; right: 14px; z-index: 9999;
                          font-family: 'Geist Mono', ui-monospace, monospace; font-size: 10px;
                          letter-spacing: 0.12em; text-transform: uppercase;
@@ -240,6 +248,11 @@ def _render_triage_preview():
     cache_bust = st.session_state.get("triage_cache_bust", 0)
     payload = _get_triage_payload(
         cfg["db_path"], min_score=1, limit_days=30, cache_bust=cache_bust
+    )
+    # Diagnostic sentinel so that if the iframe fails to mount we at least
+    # know _render_triage_preview reached this point.
+    st.caption(
+        f"Triage console · {sum(len(d['stories']) for d in payload)} stories loaded"
     )
     result = triage_reader(
         by_day=payload,
