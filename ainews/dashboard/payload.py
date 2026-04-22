@@ -15,28 +15,30 @@ from typing import Any, Iterable, Mapping
 from ainews.models import ProcessedNewsItem
 
 
-SourceType = str  # "Official" | "Press" | "Research" | "Platform" | "Newsletter"
+SourceType = str  # "Official" | "Web Scrape" | "Newsletter"
 
 
-_PRESS_HINTS = re.compile(
+_WEB_SCRAPE_HINTS = re.compile(
+    # Press
     r"\b(techcrunch|verge|bloomberg|reuters|ars technica|wired|ft\.com|"
-    r"information|venturebeat|cnbc|guardian|financial times|axios)\b",
+    r"information|venturebeat|cnbc|guardian|financial times|axios|"
+    # Research
+    r"arxiv|nature|science|papers|acl|neurips|"
+    # Platform
+    r"hugging ?face|github|kaggle|replicate|fly\.io|futuretools)\b",
     re.IGNORECASE,
 )
-_RESEARCH_HINTS = re.compile(r"\b(arxiv|nature|science|papers|acl|neurips)\b", re.IGNORECASE)
-_PLATFORM_HINTS = re.compile(r"\b(hugging ?face|github|kaggle|replicate|fly\.io)\b", re.IGNORECASE)
-_NEWSLETTER_HINTS = re.compile(r"\b(tldr|import ai|newsletter|substack|the batch)\b", re.IGNORECASE)
+_NEWSLETTER_HINTS = re.compile(
+    r"\b(tldr|import ai|newsletter|substack|the batch|alphasignal|superhuman)\b",
+    re.IGNORECASE,
+)
 
 
 def _infer_source_type(source: str) -> SourceType:
-    if _RESEARCH_HINTS.search(source):
-        return "Research"
-    if _PLATFORM_HINTS.search(source):
-        return "Platform"
     if _NEWSLETTER_HINTS.search(source):
         return "Newsletter"
-    if _PRESS_HINTS.search(source):
-        return "Press"
+    if _WEB_SCRAPE_HINTS.search(source):
+        return "Web Scrape"
     return "Official"
 
 

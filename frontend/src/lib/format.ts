@@ -23,7 +23,8 @@ export function categoryDisplay(category: string | null): string {
 }
 
 export function sourceTypeClass(type: SourceType): string {
-  return `type-${type.toLowerCase()}`;
+  // "Web Scrape" → "type-web-scrape"
+  return `type-${type.toLowerCase().replace(/\s+/g, "-")}`;
 }
 
 export function relativeTime(iso: string | null): string {

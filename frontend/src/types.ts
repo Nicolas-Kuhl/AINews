@@ -1,9 +1,4 @@
-export type SourceType =
-  | "Official"
-  | "Press"
-  | "Research"
-  | "Platform"
-  | "Newsletter";
+export type SourceType = "Official" | "Web Scrape" | "Newsletter";
 
 export type SourceMeta = {
   short: string;

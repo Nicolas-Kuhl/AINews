@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS sources (
     short TEXT NOT NULL,
     mark TEXT NOT NULL,
     hue INTEGER NOT NULL,
-    type TEXT NOT NULL CHECK (type IN ('Official','Press','Research','Platform','Newsletter'))
+    type TEXT NOT NULL CHECK (type IN ('Official','Web Scrape','Newsletter'))
 );
 """
 
@@ -175,6 +175,42 @@ class Database:
         self.conn.executescript(SCHEMA_SOURCES)
         self.conn.executescript(SCHEMA_MORNING_BRIEFS)
         self.conn.executescript(SCHEMA_DAY_BRIEFS)
+        self.conn.commit()
+        # Migrate `sources` rows if the CHECK constraint is still the old
+        # five-type schema (Official / Press / Research / Platform / Newsletter).
+        self._migrate_sources_types_if_needed()
+
+    def _migrate_sources_types_if_needed(self) -> None:
+        row = self.conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='sources'"
+        ).fetchone()
+        if not row:
+            return
+        sql = row[0] or ""
+        if "Web Scrape" in sql:
+            return  # already on new schema
+        self.conn.executescript(
+            """
+            CREATE TABLE sources_new (
+                name TEXT PRIMARY KEY,
+                short TEXT NOT NULL,
+                mark TEXT NOT NULL,
+                hue INTEGER NOT NULL,
+                type TEXT NOT NULL CHECK (type IN ('Official','Web Scrape','Newsletter'))
+            );
+            INSERT INTO sources_new (name, short, mark, hue, type)
+            SELECT name, short, mark, hue,
+                CASE type
+                    WHEN 'Press' THEN 'Web Scrape'
+                    WHEN 'Research' THEN 'Web Scrape'
+                    WHEN 'Platform' THEN 'Web Scrape'
+                    ELSE type
+                END
+            FROM sources;
+            DROP TABLE sources;
+            ALTER TABLE sources_new RENAME TO sources;
+            """
+        )
         self.conn.commit()
 
     def get_feed_last_scanned(self, feed_name: str) -> Optional[str]:
