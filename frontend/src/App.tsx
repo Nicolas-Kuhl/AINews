@@ -1,47 +1,38 @@
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Streamlit,
   withStreamlitConnection,
   ComponentProps,
 } from "streamlit-component-lib";
-import { useTheme, Theme } from "./lib/theme";
+import { Sidebar } from "./components/Sidebar";
+import { useTheme } from "./lib/theme";
+import {
+  countStories,
+  filterStories,
+  starredCount,
+  unreadCount,
+} from "./lib/filter";
+import { Day, Filters, Nav, Theme } from "./types";
 import "./styles/triage.css";
-
-type Story = {
-  id: number;
-  title: string;
-  url: string;
-  source: string;
-  published: string | null;
-  score: number;
-  category: string | null;
-  summary: string | null;
-  score_reasoning: string | null;
-  learning_objectives: string | null;
-  lo_generated_with_opus: boolean;
-  fetched_via: string | null;
-  acknowledged: boolean;
-  starred: boolean;
-  group_id: number | null;
-  related: Array<{ source: string; title: string; url: string }>;
-  source_meta: {
-    short: string;
-    mark: string;
-    hue: number;
-    type: "Official" | "Press" | "Research" | "Platform" | "Newsletter";
-  };
-};
-
-type ByDay = Array<{ date: string; label: string; stories: Story[] }>;
+import "./styles/extras.css";
 
 type Args = {
-  by_day: ByDay;
+  by_day: Day[];
   theme_default?: Theme;
+};
+
+const DEFAULT_FILTERS: Filters = {
+  search: "",
+  preset: "30d",
+  scoreMin: 1,
+  showAck: false,
 };
 
 function Reader({ args }: ComponentProps) {
   const { by_day, theme_default }: Args = args;
   const [theme, , toggleTheme] = useTheme(theme_default ?? "paper");
+  const [nav, setNav] = useState<Nav>("digest");
+  const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -49,105 +40,94 @@ function Reader({ args }: ComponentProps) {
   }, [theme]);
 
   useEffect(() => {
-    Streamlit.setFrameHeight(window.innerHeight);
-    const onResize = () => Streamlit.setFrameHeight(window.innerHeight);
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    const sync = () => Streamlit.setFrameHeight(window.innerHeight);
+    sync();
+    window.addEventListener("resize", sync);
+    return () => window.removeEventListener("resize", sync);
   }, []);
 
-  const totalStories = (by_day ?? []).reduce(
-    (acc, day) => acc + day.stories.length,
-    0
+  const days = by_day ?? [];
+  const filteredDays = useMemo(
+    () => filterStories(days, filters, nav),
+    [days, filters, nav]
   );
-  const dayCount = (by_day ?? []).length;
+
+  const counts = useMemo(
+    () => ({
+      all: countStories(days),
+      unread: unreadCount(days),
+      starred: starredCount(days),
+    }),
+    [days]
+  );
+
+  const shownCount = countStories(filteredDays);
 
   return (
-    <div className="app" data-theme={theme}>
-      <aside className="sidebar">
-        <div className="brand">
-          <span className="brand-mark">AI News</span>
-          <button
-            type="button"
-            onClick={toggleTheme}
-            aria-label="Toggle theme"
-            title={theme === "paper" ? "Switch to terminal" : "Switch to paper"}
-            style={{
-              marginLeft: "auto",
-              background: "none",
-              border: "1px solid var(--rule)",
-              borderRadius: 6,
-              width: 32,
-              height: 32,
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "var(--ink-3)",
-              cursor: "pointer",
-              fontSize: 14,
-            }}
-          >
-            {theme === "paper" ? "☾" : "☀"}
-          </button>
-        </div>
-        <div className="sidebar-section-label">Sections</div>
-        <nav className="nav" aria-label="Primary">
-          <div className="nav-item is-active">Digest</div>
-          <div className="nav-item">All stories</div>
-          <div className="nav-item">Unread</div>
-          <div className="nav-item">Starred</div>
-          <div className="nav-item">Settings</div>
-        </nav>
-      </aside>
-      <main
-        style={{
-          padding: "40px",
-          color: "var(--ink)",
-          background: "var(--bg)",
-        }}
-      >
+    <div className="app is-three-pane" data-theme={theme}>
+      <Sidebar
+        nav={nav}
+        setNav={setNav}
+        filters={filters}
+        setFilters={setFilters}
+        counts={counts}
+        theme={theme}
+        toggleTheme={toggleTheme}
+      />
+      <main className="main-pane">
         <div
-          className="brief-label-col"
-          style={{ marginBottom: 18 }}
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 10,
+            letterSpacing: "0.16em",
+            textTransform: "uppercase",
+            color: "var(--accent)",
+            fontWeight: 600,
+          }}
         >
+          Triage Console · Phase 1 preview · {nav}
+        </div>
+        <h1
+          style={{
+            fontSize: 26,
+            fontWeight: 600,
+            letterSpacing: "-0.035em",
+            margin: "6px 0 0",
+            color: "var(--ink)",
+            lineHeight: 1,
+          }}
+        >
+          {nav === "settings"
+            ? "Settings"
+            : shownCount === 0
+            ? "No stories match your filters"
+            : `${shownCount} stories across ${filteredDays.length} days`}
+        </h1>
+        <p
+          style={{
+            color: "var(--ink-3)",
+            marginTop: 14,
+            fontSize: 15,
+            maxWidth: 640,
+          }}
+        >
+          Story rows land in M5. Selection, reader drawer, and keyboard nav in M6.
+        </p>
+      </main>
+      <aside className="reader-drawer">
+        <div className="empty-msg">
+          Select a story to read.
           <div
             style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 10,
-              letterSpacing: "0.16em",
-              textTransform: "uppercase",
-              color: "var(--accent)",
-              fontWeight: 600,
+              marginTop: 8,
+              fontSize: 13,
+              color: "var(--ink-4)",
             }}
           >
-            Triage Console · Phase 1 preview
+            Or press ↑ / ↓ to navigate.
           </div>
-          <h1
-            style={{
-              fontSize: 26,
-              fontWeight: 600,
-              letterSpacing: "-0.035em",
-              margin: "6px 0 0",
-              color: "var(--ink)",
-              lineHeight: 1,
-            }}
-          >
-            {totalStories > 0
-              ? `${totalStories} stories across ${dayCount} days`
-              : "Component online — awaiting data"}
-          </h1>
-          <p
-            style={{
-              color: "var(--ink-3)",
-              marginTop: 14,
-              fontSize: 15,
-              maxWidth: 640,
-            }}
-          >
-            Theme toggle persists via <code>localStorage.ainews.theme</code>. Sidebar
-            nav is a placeholder until M4 wires up filter state and view switching.
-          </p>
         </div>
-      </main>
+      </aside>
     </div>
   );
 }
