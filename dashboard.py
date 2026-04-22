@@ -205,21 +205,21 @@ def main():
             stale_sources = 0
 
     st.markdown(
-        '<section class="hero-shell">'
+        '<section class="hero-shell terminal-deck">'
         '<div class="terminal-deck-bar">'
-        '<span class="terminal-node">AINews</span>'
-        '<span class="terminal-node terminal-node-live">Live</span>'
+        '<span class="terminal-node">AINEWS // ANALYST TERMINAL</span>'
+        '<span class="terminal-node terminal-node-live">LIVE MONITOR</span>'
         '</div>'
         '<div class="terminal-deck-main">'
         '<div class="hero-copy">'
-        '<p class="hero-kicker">AI news, curated</p>'
-        '<h1>Signal, not noise</h1>'
-        '<p class="hero-subtitle">Releases, research, business moves, and developer tooling — scored and grouped from 49 sources.</p>'
+        '<p class="hero-kicker">Operations View</p>'
+        '<h1>AI News Analyst Terminal</h1>'
+        '<p class="hero-subtitle">Fast, high-signal scanning for releases, research, business moves, and developer tooling.</p>'
         '</div>'
         '<div class="terminal-legend">'
-        '<span class="legend-item"><span class="legend-swatch legend-amber"></span>Score 8+</span>'
-        '<span class="legend-item"><span class="legend-swatch legend-cyan"></span>Score 5–7</span>'
-        '<span class="legend-item"><span class="legend-swatch" style="background:#8b949e"></span>Score &lt;5</span>'
+        '<span class="legend-item"><span class="legend-swatch legend-cyan"></span>active state</span>'
+        '<span class="legend-item"><span class="legend-swatch legend-amber"></span>high score</span>'
+        '<span class="legend-item"><span class="legend-swatch legend-red"></span>alert</span>'
         '</div>'
         '</div>'
         '</section>',
@@ -260,8 +260,8 @@ def main():
     with st.sidebar:
         st.markdown(
             '<div class="sidebar-panel-heading">'
-            '<div class="sidebar-panel-kicker">Filters</div>'
-            '<div class="sidebar-panel-copy">Narrow the feed by score, date, and sort order.</div>'
+            '<div class="sidebar-panel-kicker">Control Panel</div>'
+            '<div class="sidebar-panel-copy">Filter live stories, tune density, and sort by signal.</div>'
             '</div>',
             unsafe_allow_html=True,
         )
