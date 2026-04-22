@@ -18,18 +18,22 @@ from ainews.models import ProcessedNewsItem
 SourceType = str  # "Official" | "Web Scrape" | "Newsletter"
 
 
-_WEB_SCRAPE_HINTS = re.compile(
-    # Press
-    r"\b(techcrunch|verge|bloomberg|reuters|ars technica|wired|ft\.com|"
-    r"information|venturebeat|cnbc|guardian|financial times|axios|"
-    # Research
-    r"arxiv|nature|science|papers|acl|neurips|"
-    # Platform
-    r"hugging ?face|github|kaggle|replicate|fly\.io|futuretools)\b",
+# Newsletters typically arrive via email ingestion — the source string is the
+# newsletter name rather than a feed URL. Keep this list extensible.
+_NEWSLETTER_HINTS = re.compile(
+    r"\b(tldr|import ai|newsletter|substack|the batch|alphasignal|"
+    r"superhuman( ai)?|the rundown|lenny|interconnects|one useful thing|"
+    r"chain of thought|ahead of ai)\b",
     re.IGNORECASE,
 )
-_NEWSLETTER_HINTS = re.compile(
-    r"\b(tldr|import ai|newsletter|substack|the batch|alphasignal|superhuman)\b",
+
+# Official = first-party posts from AI labs / companies. Narrow allowlist —
+# everything else falls through to "Web Scrape".
+_OFFICIAL_HINTS = re.compile(
+    r"\b(anthropic|openai|deepmind|google ai|google deepmind|"
+    r"gemini news|claude status|github copilot|meta ai|microsoft ai|"
+    r"nvidia (news|newsroom|blog)|cohere|mistral (ai|ai news)|"
+    r"stability ai|aws (ml|ai)|apple ai|ibm research|hugging ?face blog)\b",
     re.IGNORECASE,
 )
 
@@ -37,9 +41,9 @@ _NEWSLETTER_HINTS = re.compile(
 def _infer_source_type(source: str) -> SourceType:
     if _NEWSLETTER_HINTS.search(source):
         return "Newsletter"
-    if _WEB_SCRAPE_HINTS.search(source):
-        return "Web Scrape"
-    return "Official"
+    if _OFFICIAL_HINTS.search(source):
+        return "Official"
+    return "Web Scrape"
 
 
 def _hue_for(source: str) -> int:
@@ -66,14 +70,27 @@ def _mark_for(source: str) -> str:
     return word[0].upper() if len(word) > 2 else word[:2].capitalize()
 
 
-def derived_source_meta(source: str) -> dict[str, Any]:
+_CONFIG_CATEGORY_TO_TYPE: dict[str, SourceType] = {
+    "trusted": "Official",
+    "open": "Web Scrape",
+    "newsletter": "Newsletter",
+}
+
+
+def derived_source_meta(
+    source: str, *, config_type: SourceType | None = None
+) -> dict[str, Any]:
     """Heuristic display metadata used as a fallback when the `sources` table
-    has no entry for this source."""
+    has no entry for this source.
+
+    Passing ``config_type`` forces the type (e.g. when the source matches a
+    feed entry in ``config.yaml``), overriding the name-based heuristic.
+    """
     return {
         "short": _short_for(source),
         "mark": _mark_for(source),
         "hue": _hue_for(source),
-        "type": _infer_source_type(source),
+        "type": config_type or _infer_source_type(source),
     }
 
 
@@ -164,18 +181,41 @@ def build_by_day_payload(
     return result
 
 
-def ensure_source_metas(db, *, refresh_all: bool = False) -> dict[str, dict[str, Any]]:
+def _config_type_map(config_feeds: Iterable[Mapping[str, Any]] | None) -> dict[str, SourceType]:
+    """Return a ``source_name → SourceType`` map derived from the config feeds.
+
+    Feed rows with ``category: trusted`` become Official, ``open`` becomes
+    Web Scrape. Unrecognised categories are ignored (heuristic will run).
+    """
+    out: dict[str, SourceType] = {}
+    for feed in config_feeds or ():
+        name = (feed.get("name") or "").strip()
+        cat = (feed.get("category") or "").strip().lower()
+        mapped = _CONFIG_CATEGORY_TO_TYPE.get(cat)
+        if name and mapped:
+            out[name] = mapped
+    return out
+
+
+def ensure_source_metas(
+    db,
+    *,
+    refresh_all: bool = False,
+    config_feeds: Iterable[Mapping[str, Any]] | None = None,
+) -> dict[str, dict[str, Any]]:
     """Populate the `sources` table with derived defaults for any source that
     does not yet have a row, and return the current metadata map.
 
     Passing ``refresh_all=True`` overwrites existing rows — use sparingly, it
-    wipes operator edits.
+    wipes operator edits. Passing ``config_feeds`` lets the config drive
+    ``type`` authoritatively (trusted→Official, open→Web Scrape).
     """
     existing = db.get_source_metas()
     seen_sources = set(db.get_all_sources())
+    config_types = _config_type_map(config_feeds)
     missing = seen_sources - set(existing.keys()) if not refresh_all else seen_sources
     for name in missing:
-        derived = derived_source_meta(name)
+        derived = derived_source_meta(name, config_type=config_types.get(name))
         db.upsert_source_meta(
             name,
             short=derived["short"],

@@ -173,6 +173,7 @@ def check_authentication():
 @st.cache_data(ttl=60)
 def _get_triage_payload(db_path: str, min_score: int, limit_days: int, cache_bust: int = 0):
     _ = cache_bust  # increments to invalidate the cache after writes
+    cfg = load_config()
     db = Database(db_path)
     try:
         raw = db.query_by_day(
@@ -181,7 +182,7 @@ def _get_triage_payload(db_path: str, min_score: int, limit_days: int, cache_bus
             show_acknowledged=True,
             limit_days=limit_days,
         )
-        source_metas = ensure_source_metas(db)
+        source_metas = ensure_source_metas(db, config_feeds=cfg.get("feeds"))
         day_briefs = db.get_day_briefs(list(raw.keys()))
         payload = build_by_day_payload(
             raw, source_metas=source_metas, day_briefs=day_briefs
