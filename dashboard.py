@@ -7,6 +7,7 @@ from pathlib import Path
 import yaml
 
 from ainews.config import load_config
+from ainews.dashboard.payload import build_by_day_payload
 from ainews.frontend import reader as triage_reader
 from ainews.storage.database import Database
 from dashboard_components import _render_news_list, _render_digest, _render_settings_tab, load_css
@@ -169,8 +170,23 @@ def check_authentication():
     return True
 
 
+@st.cache_data(ttl=60)
+def _get_triage_payload(db_path: str, min_score: int, limit_days: int):
+    db = Database(db_path)
+    try:
+        raw = db.query_by_day(
+            min_score=min_score,
+            max_score=10,
+            show_acknowledged=True,
+            limit_days=limit_days,
+        )
+    finally:
+        db.close()
+    return build_by_day_payload(raw)
+
+
 def _render_triage_preview():
-    """Phase 1 preview: render the new React triage console against a stub payload.
+    """Phase 1 preview: render the new React triage console.
 
     Enable with ``?ui=reader`` in the URL. Replaces the entire dashboard body;
     the legacy UI remains the default until Phase 1 milestones land.
@@ -193,7 +209,9 @@ def _render_triage_preview():
         """,
         unsafe_allow_html=True,
     )
-    triage_reader(by_day=[], theme_default="paper", key="ainews_reader_preview")
+    cfg = load_config()
+    payload = _get_triage_payload(cfg["db_path"], min_score=1, limit_days=30)
+    triage_reader(by_day=payload, theme_default="paper", key="ainews_reader_preview")
 
 
 def main():

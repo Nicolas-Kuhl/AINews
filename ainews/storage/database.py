@@ -121,6 +121,14 @@ class Database:
             self.conn.commit()
         except sqlite3.OperationalError:
             pass
+        # Migrate: add starred column if missing
+        try:
+            self.conn.execute(
+                "ALTER TABLE news_items ADD COLUMN starred INTEGER DEFAULT 0"
+            )
+            self.conn.commit()
+        except sqlite3.OperationalError:
+            pass
         # Add index on processed_at for fast "last 24 hours" queries
         self.conn.execute(SCHEMA_PROCESSED_AT_INDEX)
         # Create feed_scans table for per-feed scan interval tracking
@@ -205,6 +213,19 @@ class Database:
     def acknowledge(self, item_id: int):
         self.conn.execute(
             "UPDATE news_items SET acknowledged = 1 WHERE id = ?", (item_id,)
+        )
+        self.conn.commit()
+
+    def unacknowledge(self, item_id: int):
+        self.conn.execute(
+            "UPDATE news_items SET acknowledged = 0 WHERE id = ?", (item_id,)
+        )
+        self.conn.commit()
+
+    def set_starred(self, item_id: int, starred: bool):
+        self.conn.execute(
+            "UPDATE news_items SET starred = ? WHERE id = ?",
+            (1 if starred else 0, item_id),
         )
         self.conn.commit()
 
@@ -615,6 +636,10 @@ class Database:
             content = row["content"]
         except (IndexError, KeyError):
             content = None
+        try:
+            starred = bool(row["starred"])
+        except (IndexError, KeyError):
+            starred = False
         return ProcessedNewsItem(
             id=row["id"],
             title=row["title"],
@@ -632,6 +657,7 @@ class Database:
             acknowledged=acknowledged,
             group_id=group_id,
             lo_generated_with_opus=lo_generated_with_opus,
+            starred=starred,
         )
 
     def __enter__(self):

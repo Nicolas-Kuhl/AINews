@@ -34,3 +34,4 @@ class ProcessedNewsItem:
     acknowledged: bool = False
     group_id: Optional[int] = None
     lo_generated_with_opus: bool = False
+    starred: bool = False
