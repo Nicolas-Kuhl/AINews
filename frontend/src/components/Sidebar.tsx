@@ -73,7 +73,7 @@ export function Sidebar({
                 <a
                   key={item.key}
                   className="nav-item"
-                  href="?settings=1"
+                  href="/?settings=1"
                   target="_top"
                   rel="noreferrer"
                 >
