@@ -1,5 +1,6 @@
 import { Story, Theme } from "../types";
 import {
+  clipSentences,
   markMarginColor,
   relativeTime,
   scoreBand,
@@ -114,7 +115,11 @@ export function Reader({
         </div>
 
         <h1 className="reader-title">{story.title}</h1>
-        {story.summary && <div className="reader-dek">{story.summary}</div>}
+        {(story.short_summary || story.summary) && (
+          <div className="reader-dek">
+            {story.short_summary || clipSentences(story.summary, 3)}
+          </div>
+        )}
 
         <div className="reader-byline">
           <div

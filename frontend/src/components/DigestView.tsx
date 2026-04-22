@@ -48,8 +48,11 @@ export function DigestView({
 
   return (
     <div>
-      {days.map((day) => {
-        const collapsed = isCollapsed(day.date);
+      {days.map((day, idx) => {
+        // Most recent day defaults to expanded; older days default to collapsed.
+        // User toggles override via localStorage.
+        const defaultCollapsed = idx > 0;
+        const collapsed = isCollapsed(day.date, defaultCollapsed);
         const highCount = day.stories.filter((s) => s.score >= 8).length;
         return (
           <section key={day.date}>
@@ -58,7 +61,7 @@ export function DigestView({
               label={day.label}
               stories={day.stories}
               collapsed={collapsed}
-              onToggle={() => toggle(day.date)}
+              onToggle={() => toggle(day.date, collapsed)}
             />
             {!collapsed && day.brief && (
               <div className="day-summary" id={`day-${day.date}-brief`}>
