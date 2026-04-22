@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Streamlit,
   withStreamlitConnection,
@@ -41,15 +41,21 @@ function findStory(days: Day[], id: number | null): Story | null {
   return null;
 }
 
+type Event =
+  | { type: "ack"; id: number; value: boolean }
+  | { type: "star"; id: number; value: boolean };
+
 function ReaderApp({ args }: ComponentProps) {
   const { by_day, theme_default }: Args = args;
   const [theme, , toggleTheme] = useTheme(theme_default ?? "paper");
   const [nav, setNav] = useState<Nav>("digest");
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  // Optimistic local overrides until M7 round-trips these to Python
+  // Optimistic local overrides that get cleared once Python echoes fresh data
   const [localAck, setLocalAck] = useState<Record<number, boolean>>({});
   const [localStar, setLocalStar] = useState<Record<number, boolean>>({});
+
+  const seqRef = useRef(0);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -61,6 +67,18 @@ function ReaderApp({ args }: ComponentProps) {
     sync();
     window.addEventListener("resize", sync);
     return () => window.removeEventListener("resize", sync);
+  }, []);
+
+  // Any time Python hands us a new by_day, drop local overrides — Python has
+  // already applied the corresponding events to the DB.
+  useEffect(() => {
+    setLocalAck({});
+    setLocalStar({});
+  }, [by_day]);
+
+  const sendEvent = useCallback((event: Event) => {
+    seqRef.current += 1;
+    Streamlit.setComponentValue({ seq: seqRef.current, events: [event] });
   }, []);
 
   const days: Day[] = useMemo(() => {
@@ -101,17 +119,20 @@ function ReaderApp({ args }: ComponentProps) {
 
   const handleToggleAck = useCallback(
     (story: Story) => {
-      setLocalAck((prev) => ({ ...prev, [story.id]: !story.acknowledged }));
-      // M7 will also Streamlit.setComponentValue(...) here
+      const next = !story.acknowledged;
+      setLocalAck((prev) => ({ ...prev, [story.id]: next }));
+      sendEvent({ type: "ack", id: story.id, value: next });
     },
-    []
+    [sendEvent]
   );
 
   const handleToggleStar = useCallback(
     (story: Story) => {
-      setLocalStar((prev) => ({ ...prev, [story.id]: !story.starred }));
+      const next = !story.starred;
+      setLocalStar((prev) => ({ ...prev, [story.id]: next }));
+      sendEvent({ type: "star", id: story.id, value: next });
     },
-    []
+    [sendEvent]
   );
 
   const selectedStory = findStory(days, selectedId);

@@ -171,7 +171,8 @@ def check_authentication():
 
 
 @st.cache_data(ttl=60)
-def _get_triage_payload(db_path: str, min_score: int, limit_days: int):
+def _get_triage_payload(db_path: str, min_score: int, limit_days: int, cache_bust: int = 0):
+    _ = cache_bust  # increments to invalidate the cache after writes
     db = Database(db_path)
     try:
         raw = db.query_by_day(
@@ -183,6 +184,24 @@ def _get_triage_payload(db_path: str, min_score: int, limit_days: int):
     finally:
         db.close()
     return build_by_day_payload(raw)
+
+
+def _apply_triage_events(db_path: str, events: list[dict]) -> None:
+    db = Database(db_path)
+    try:
+        for evt in events:
+            kind = evt.get("type")
+            item_id = int(evt.get("id"))
+            value = bool(evt.get("value"))
+            if kind == "ack":
+                if value:
+                    db.acknowledge(item_id)
+                else:
+                    db.unacknowledge(item_id)
+            elif kind == "star":
+                db.set_starred(item_id, value)
+    finally:
+        db.close()
 
 
 def _render_triage_preview():
@@ -210,8 +229,25 @@ def _render_triage_preview():
         unsafe_allow_html=True,
     )
     cfg = load_config()
-    payload = _get_triage_payload(cfg["db_path"], min_score=1, limit_days=30)
-    triage_reader(by_day=payload, theme_default="paper", key="ainews_reader_preview")
+    cache_bust = st.session_state.get("triage_cache_bust", 0)
+    payload = _get_triage_payload(
+        cfg["db_path"], min_score=1, limit_days=30, cache_bust=cache_bust
+    )
+    result = triage_reader(
+        by_day=payload,
+        theme_default="paper",
+        key="ainews_reader_preview",
+    )
+    if isinstance(result, dict):
+        seq = result.get("seq")
+        last_seq = st.session_state.get("triage_last_seq")
+        if seq is not None and seq != last_seq:
+            st.session_state["triage_last_seq"] = seq
+            events = result.get("events") or []
+            if events:
+                _apply_triage_events(cfg["db_path"], events)
+                st.session_state["triage_cache_bust"] = cache_bust + 1
+                st.rerun()
 
 
 def main():
