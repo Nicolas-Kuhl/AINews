@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 
 import anthropic
@@ -10,6 +11,8 @@ from rapidfuzz import fuzz
 from ainews.models import RawNewsItem
 
 logger = logging.getLogger(__name__)
+
+_NUMERIC_MARKER_RE = re.compile(r"\d+(?:\.\d+)*")
 
 
 def normalize_url(url: str) -> str:
@@ -32,6 +35,41 @@ def normalize_url(url: str) -> str:
         return urlunparse((scheme, netloc, path, parsed.params, query, ""))
     except Exception:
         return url.strip().lower()
+
+
+def _normalize_numeric_marker(marker: str) -> str:
+    """Normalize numeric markers so versions like 2.0 and 2 compare equally."""
+    marker = marker.strip().lower()
+    if "." not in marker:
+        return marker
+
+    parts = marker.split(".")
+    while len(parts) > 1 and parts[-1] == "0":
+        parts.pop()
+    return ".".join(parts)
+
+
+def _extract_numeric_markers(title: str) -> set[str]:
+    """Extract normalized numeric/version markers from a title."""
+    normalized = (
+        title.lower()
+        .replace("‑", "-")
+        .replace("–", "-")
+        .replace("—", "-")
+    )
+    return {
+        _normalize_numeric_marker(match.group(0))
+        for match in _NUMERIC_MARKER_RE.finditer(normalized)
+    }
+
+
+def _has_conflicting_numeric_markers(title_a: str, title_b: str) -> bool:
+    """Return True when two similar titles clearly refer to different numbered versions."""
+    markers_a = _extract_numeric_markers(title_a)
+    markers_b = _extract_numeric_markers(title_b)
+    if not markers_a or not markers_b:
+        return False
+    return markers_a.isdisjoint(markers_b)
 
 
 def deduplicate(
@@ -79,6 +117,8 @@ def deduplicate(
         best_borderline_score = 0
         for kept_title in seen_titles:
             score = fuzz.token_set_ratio(title_lower, kept_title)
+            if _has_conflicting_numeric_markers(title_lower, kept_title):
+                continue
             if score >= threshold:
                 is_dup = True
                 break
