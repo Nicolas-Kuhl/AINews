@@ -17,6 +17,7 @@ ENV/
 data/*.db
 data/*.log
 data/*.xml
+data/.last_run
 
 # Config with secrets
 config.yaml

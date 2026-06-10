@@ -15,7 +15,7 @@ from ainews.fetchers.content_fetcher import fetch_content_for_items
 from ainews.fetchers.rss_fetcher import fetch_all_feeds
 from ainews.fetchers.web_searcher import search_all_queries
 from ainews.processing.deduplicator import deduplicate, semantic_dedup
-from ainews.processing.grouper import run_grouper
+from ainews.processing.grouper import deep_semantic_dedup, run_grouper
 from ainews.processing.scorer import score_items
 from ainews.rss_generator import save_rss_feed
 from ainews.storage.database import Database
@@ -177,8 +177,15 @@ def main():
         email_items = fetch_all_newsletters(cfg, db)
         logger.info(f"  Total email items: {len(email_items)}")
 
-    # 5. Combine and deduplicate (against batch + existing DB items)
+    # 5. Combine, drop obvious non-AI noise, and deduplicate
     combined = rss_items + search_items + email_items
+    from ainews.processing.content_filter import filter_junk
+    combined, dropped_junk = filter_junk(combined)
+    if dropped_junk:
+        logger.info(f"  Dropped {len(dropped_junk)} junk items (horoscopes/zodiac/lifestyle)")
+        from collections import Counter as _Counter
+        for reason, n in _Counter(r for _, r in dropped_junk).most_common():
+            logger.info(f"    {n} × {reason}")
     logger.info(f"\n[5/8] Deduplicating {len(combined)} items...")
     existing_titles = db.get_all_titles()
     existing_urls = db.get_all_normalized_urls()
@@ -262,6 +269,17 @@ def main():
         semantic_grouped = db.group_by_title_pairs(semantic_pairs)
         if semantic_grouped:
             logger.info(f"  Semantic grouping added {semantic_grouped} additional group{'s' if semantic_grouped != 1 else ''}")
+
+    # 7c. Deep semantic dedup — catches cross-publisher rewrites that the
+    # fuzzy grouper misses (e.g. "Anthropic files IPO" vs "S&P 500 rejects
+    # SpaceX, also blocking Anthropic"). Scoped to the last 7 days so the
+    # daily Claude bill stays small.
+    logger.info("\n[7c] Deep semantic dedup (recent items)...")
+    try:
+        semantic_count = deep_semantic_dedup(db, client, cfg["model"], since_days=7)
+        logger.info(f"  Confirmed and grouped {semantic_count} additional pairs")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"  Deep semantic dedup failed (non-fatal): {exc}")
 
     # 8. Generate RSS feed
     logger.info("\n[8/8] Generating RSS feed...")

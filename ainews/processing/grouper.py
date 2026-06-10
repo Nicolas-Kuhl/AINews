@@ -1,5 +1,7 @@
 """Group similar news items by fuzzy title matching."""
 
+from __future__ import annotations
+
 import json
 import logging
 import re
@@ -41,8 +43,20 @@ def _is_vendor_url(url: str) -> bool:
         return False
 
 
-def run_grouper(db: Database, threshold: int = 60) -> int:
-    """Assign group_id to all items in the database. Returns number of groups created."""
+def run_grouper(
+    db: Database,
+    threshold: int = 48,
+    min_shared_words: int = 3,
+) -> int:
+    """Assign group_id to all items in the database. Returns number of groups created.
+
+    A new item joins a group when there exists at least one member of that
+    group with ≥ ``min_shared_words`` shared significant words AND a fuzzy
+    title score ≥ ``threshold``. The new item joins the BEST-matching group
+    (highest fuzzy score across any member) — this catches cross-publisher
+    rewrites where the late entrant phrasing diverges from the original
+    primary but still aligns with a more recent member.
+    """
     items = db.get_all_items_minimal()
     if not items:
         return 0
@@ -50,30 +64,51 @@ def run_grouper(db: Database, threshold: int = 60) -> int:
     # Clear existing groups and rebuild
     db.clear_all_groups()
 
+    # Cache significant-word sets so we don't recompute O(n) times per item
+    item_word_cache: dict[int, set[str]] = {}
+
+    def words_of(it: dict) -> set[str]:
+        cached = item_word_cache.get(it["id"])
+        if cached is None:
+            cached = _significant_words(it["title"].lower().strip())
+            item_word_cache[it["id"]] = cached
+        return cached
+
     # Build groups: list of list of item dicts
     groups: list[list[dict]] = []
 
     for item in items:
         title_lower = item["title"].lower().strip()
-        item_words = _significant_words(title_lower)
-        matched_group = None
+        item_words = words_of(item)
+        if len(item_words) < min_shared_words:
+            # Title too short to match meaningfully — start its own group
+            groups.append([item])
+            continue
+
+        best_group: list[dict] | None = None
+        best_score = -1
 
         for group in groups:
-            # Only match against the first item (primary) to avoid chain-matching
-            primary_title = group[0]["title"].lower().strip()
-            shared = item_words & _significant_words(primary_title)
-            if len(shared) >= 2 and fuzz.token_sort_ratio(title_lower, primary_title) >= threshold:
-                matched_group = group
-                break
+            for member in group:
+                shared = item_words & words_of(member)
+                if len(shared) < min_shared_words:
+                    continue
+                score = fuzz.token_sort_ratio(
+                    title_lower, member["title"].lower().strip()
+                )
+                if score >= threshold and score > best_score:
+                    best_group = group
+                    best_score = score
+                    break  # this group already matches; check other groups
 
-        if matched_group:
+        if best_group is not None:
             # Decide if new item should become primary (index 0)
             new_is_vendor = _is_vendor_url(item["url"])
-            cur_is_vendor = _is_vendor_url(matched_group[0]["url"])
+            cur_is_vendor = _is_vendor_url(best_group[0]["url"])
             if new_is_vendor and not cur_is_vendor:
-                matched_group.insert(0, item)
+                best_group.insert(0, item)
             else:
-                matched_group.append(item)
+                best_group.append(item)
         else:
             groups.append([item])
 
@@ -100,6 +135,8 @@ def deep_semantic_dedup(
     model: str,
     fuzzy_low: int = 30,
     fuzzy_high: int = 70,
+    since_days: int | None = None,
+    max_candidates: int = 400,
 ) -> int:
     """Scan unacknowledged DB items for semantic duplicates using Claude.
 
@@ -115,11 +152,25 @@ def deep_semantic_dedup(
         model: Model ID for Claude.
         fuzzy_low: Minimum fuzzy score to consider a pair.
         fuzzy_high: Maximum fuzzy score (above this, run_grouper already catches them).
+        since_days: When set, restrict to items published within the last N days
+            (keeps the daily pipeline call cheap). ``None`` scans everything.
+        max_candidates: Hard cap on the number of pairs sent to Claude in one
+            call. Highest-fuzzy pairs are kept first.
 
     Returns:
         Number of new groupings created.
     """
     items = db.get_all_items_for_dedup(unacknowledged_only=True)
+    if since_days is not None:
+        from datetime import datetime, timezone, timedelta
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=since_days)).isoformat()
+        recent_ids = {
+            r["id"]
+            for r in db.conn.execute(
+                "SELECT id FROM news_items WHERE published >= ?", (cutoff,)
+            ).fetchall()
+        }
+        items = [it for it in items if it["id"] in recent_ids]
     if len(items) < 2:
         return 0
 
@@ -143,6 +194,21 @@ def deep_semantic_dedup(
     if not candidates:
         logger.info("  Deep semantic dedup: no borderline candidates found.")
         return 0
+
+    # Cap candidates to keep the API call bounded; prefer pairs with the most
+    # shared keywords (more likely to be true dupes) before falling back to
+    # higher fuzzy scores.
+    if len(candidates) > max_candidates:
+        def _candidate_strength(pair: tuple[dict, dict]) -> tuple[int, int]:
+            a, b = pair
+            shared = _significant_words(a["title"].lower()) & _significant_words(b["title"].lower())
+            ratio = fuzz.token_set_ratio(a["title"].lower(), b["title"].lower())
+            return (len(shared), ratio)
+        candidates.sort(key=_candidate_strength, reverse=True)
+        logger.info(
+            f"  Deep semantic dedup: trimming {len(candidates)} → {max_candidates} candidate pairs (strongest first)."
+        )
+        candidates = candidates[:max_candidates]
 
     logger.info(f"  Deep semantic dedup: {len(candidates)} candidate pairs to review.")
 
