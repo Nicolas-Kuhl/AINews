@@ -156,11 +156,12 @@ See **[deployment/QUICKSTART.md](deployment/QUICKSTART.md)** for deployment opti
 
 - **🚀 Simple (5 min):** EC2 deployment - [Setup Script](deployment/aws-ec2-setup.sh)
 - **🏢 Production (30 min):** App Runner + ECS - [Full Guide](deployment/README-AWS.md)
-- **🐳 Local Testing:** Docker - See `docker-compose.yml`
 
-Quick start with Docker:
+Run locally:
 ```bash
-docker-compose up dashboard
+python -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+streamlit run dashboard.py
 ```
 
 ## Project Structure

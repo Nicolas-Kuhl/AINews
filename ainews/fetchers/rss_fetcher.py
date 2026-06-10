@@ -1,5 +1,6 @@
 """Smart feed fetcher — routes feeds by type: rss, web, or auto-detect."""
 
+import concurrent.futures
 import re
 from datetime import datetime
 from time import mktime
@@ -24,30 +25,73 @@ _HEADERS = {
 # Public API
 # ---------------------------------------------------------------------------
 
-def fetch_all_feeds(feeds: list[dict], timeout: int = 15, max_items: int = 20) -> list[RawNewsItem]:
-    """Fetch all configured feeds, routing by type (rss / web / auto)."""
+def _fetch_one_feed(fc: dict, timeout: int, max_items: int) -> list[RawNewsItem]:
+    """Fetch a single rss/auto feed (the unit of work for the thread pool)."""
+    if fc.get("type", "auto") == "rss":
+        return _fetch_rss_direct(fc, timeout, max_items)
+    return _fetch_auto(fc, timeout, max_items)
+
+
+def fetch_all_feeds(
+    feeds: list[dict],
+    timeout: int = 15,
+    max_items: int = 20,
+    max_workers: int = 8,
+    total_timeout: Optional[int] = None,
+) -> list[RawNewsItem]:
+    """Fetch all configured feeds, routing by type (rss / web / auto).
+
+    RSS/auto feeds are fetched concurrently in a thread pool (their network
+    waits release the GIL), so one slow or hung source no longer blocks the
+    rest. A global ``total_timeout`` wall-clock budget bounds the whole batch
+    so a pile-up of slow feeds can't run long enough to overlap the next cron
+    tick; feeds not finished by the deadline are skipped with a log line.
+
+    web-type feeds still run together through a single headless browser.
+    """
     all_items: list[RawNewsItem] = []
     web_feeds: list[dict] = []
+    direct_feeds: list[dict] = []
 
     for fc in feeds:
         if not fc.get("enabled", True):
             print(f"  [Skip] {fc['name']} (disabled)")
             continue
-
-        feed_type = fc.get("type", "auto")
-
-        if feed_type == "rss":
-            print(f"  [Feed] Fetching {fc['name']}...")
-            items = _fetch_rss_direct(fc, timeout, max_items)
-            all_items.extend(items)
-
-        elif feed_type == "web":
+        if fc.get("type", "auto") == "web":
             web_feeds.append(fc)
+        else:
+            direct_feeds.append(fc)
 
-        else:  # auto
-            print(f"  [Feed] Fetching {fc['name']}...")
-            items = _fetch_auto(fc, timeout, max_items)
-            all_items.extend(items)
+    if direct_feeds:
+        if total_timeout is None:
+            # Generous backstop: a few per-feed timeout cycles plus slack. The
+            # per-feed `timeout` is the primary guard; this only caps pile-ups.
+            total_timeout = timeout * 4 + 30
+        workers = max(1, min(max_workers, len(direct_feeds)))
+        print(f"  [Feed] Fetching {len(direct_feeds)} feeds (up to {workers} at a time)...")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+            future_to_feed = {
+                executor.submit(_fetch_one_feed, fc, timeout, max_items): fc
+                for fc in direct_feeds
+            }
+            try:
+                for future in concurrent.futures.as_completed(
+                    future_to_feed, timeout=total_timeout
+                ):
+                    fc = future_to_feed[future]
+                    try:
+                        all_items.extend(future.result())
+                    except Exception as e:
+                        print(f"  [Feed] Error fetching {fc['name']}: {e}")
+            except concurrent.futures.TimeoutError:
+                unfinished = [fc["name"] for f, fc in future_to_feed.items() if not f.done()]
+                print(
+                    f"  [Feed] Global deadline {total_timeout}s hit; "
+                    f"skipping {len(unfinished)} unfinished feed(s): "
+                    f"{', '.join(unfinished[:5])}{'...' if len(unfinished) > 5 else ''}"
+                )
+                for f in future_to_feed:
+                    f.cancel()
 
     # Process all web-type feeds together with a single browser instance
     if web_feeds:
