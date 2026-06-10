@@ -5,21 +5,17 @@ from __future__ import annotations
 import json
 import logging
 import re
-from urllib.parse import urlparse
 
 import anthropic
 from rapidfuzz import fuzz
 
-from ainews.storage.database import Database
+from ainews.storage.database import Database, is_vendor_url
 
 logger = logging.getLogger(__name__)
 
-VENDOR_DOMAINS = {
-    "openai.com", "anthropic.com", "deepmind.google", "deepmind.com",
-    "blogs.microsoft.com", "ai.meta.com", "about.fb.com",
-    "stability.ai", "mistral.ai", "x.ai", "huggingface.co",
-    "blog.google", "nvidia.com",
-}
+# Vendor-domain handling moved to the storage layer so the grouper and the DB's
+# primary-selection share one definition. Re-exported here for backward compat.
+_is_vendor_url = is_vendor_url
 
 _STOPWORDS = {
     "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for",
@@ -35,36 +31,38 @@ def _significant_words(title: str) -> set[str]:
     return {w for w in words if len(w) > 3 and w not in _STOPWORDS}
 
 
-def _is_vendor_url(url: str) -> bool:
-    try:
-        host = urlparse(url).netloc.lower().removeprefix("www.")
-        return any(host == d or host.endswith("." + d) for d in VENDOR_DOMAINS)
-    except Exception:
-        return False
-
-
 def run_grouper(
     db: Database,
     threshold: int = 48,
     min_shared_words: int = 3,
+    window_days: int | None = 14,
+    rebuild: bool = False,
 ) -> int:
-    """Assign group_id to all items in the database. Returns number of groups created.
+    """Incrementally assign group_id to recent items. Returns groups touched.
 
-    A new item joins a group when there exists at least one member of that
-    group with ≥ ``min_shared_words`` shared significant words AND a fuzzy
-    title score ≥ ``threshold``. The new item joins the BEST-matching group
-    (highest fuzzy score across any member) — this catches cross-publisher
-    rewrites where the late entrant phrasing diverges from the original
-    primary but still aligns with a more recent member.
+    A new (ungrouped) item joins a group when some member of that group shares
+    ≥ ``min_shared_words`` significant words AND has a fuzzy title score ≥
+    ``threshold``; it joins the best-matching group. Two previously-ungrouped
+    items that match each other form a new group.
+
+    Unlike the old implementation, this does NOT clear and renumber every group
+    on each run. Existing ``group_id`` values are preserved (stable across runs)
+    and only items currently without a group are considered for assignment. Work
+    is scoped to items published within the last ``window_days`` so the cost
+    does not grow with total history — pass ``window_days=None`` to consider all
+    items. Set ``rebuild=True`` to clear every group first and regroup from
+    scratch (used by the backfill script).
+
+    The lead item of each touched group is flagged via ``is_primary`` (vendor
+    source preferred, then score, then earliest published).
     """
-    items = db.get_all_items_minimal()
+    if rebuild:
+        db.clear_all_groups()
+
+    items = db.get_recent_items_for_grouping(window_days)
     if not items:
         return 0
 
-    # Clear existing groups and rebuild
-    db.clear_all_groups()
-
-    # Cache significant-word sets so we don't recompute O(n) times per item
     item_word_cache: dict[int, set[str]] = {}
 
     def words_of(it: dict) -> set[str]:
@@ -74,59 +72,72 @@ def run_grouper(
             item_word_cache[it["id"]] = cached
         return cached
 
-    # Build groups: list of list of item dicts
-    groups: list[list[dict]] = []
+    # Seed clusters from groups that already exist; collect the rest as
+    # candidates for assignment. Existing members keep their group_id.
+    clusters: list[dict] = []
+    by_gid: dict[int, dict] = {}
+    ungrouped: list[dict] = []
+    for it in items:
+        gid = it["group_id"]
+        if gid is not None:
+            cl = by_gid.get(gid)
+            if cl is None:
+                cl = {"gid": gid, "members": []}
+                by_gid[gid] = cl
+                clusters.append(cl)
+            cl["members"].append(it)
+        else:
+            ungrouped.append(it)
 
-    for item in items:
-        title_lower = item["title"].lower().strip()
+    next_gid = db.max_group_id() + 1
+    newly_assigned: dict[int, int] = {}  # item_id -> gid, to persist
+    affected_gids: set[int] = set()
+
+    for item in ungrouped:
         item_words = words_of(item)
         if len(item_words) < min_shared_words:
-            # Title too short to match meaningfully — start its own group
-            groups.append([item])
-            continue
+            continue  # title too thin to match; stays ungrouped
 
-        best_group: list[dict] | None = None
+        title_lower = item["title"].lower().strip()
+        best_cluster: dict | None = None
         best_score = -1
-
-        for group in groups:
-            for member in group:
-                shared = item_words & words_of(member)
-                if len(shared) < min_shared_words:
+        for cl in clusters:
+            for member in cl["members"]:
+                if len(item_words & words_of(member)) < min_shared_words:
                     continue
                 score = fuzz.token_sort_ratio(
                     title_lower, member["title"].lower().strip()
                 )
                 if score >= threshold and score > best_score:
-                    best_group = group
+                    best_cluster = cl
                     best_score = score
-                    break  # this group already matches; check other groups
+                    break  # this cluster matches; move on to compare others
 
-        if best_group is not None:
-            # Decide if new item should become primary (index 0)
-            new_is_vendor = _is_vendor_url(item["url"])
-            cur_is_vendor = _is_vendor_url(best_group[0]["url"])
-            if new_is_vendor and not cur_is_vendor:
-                best_group.insert(0, item)
-            else:
-                best_group.append(item)
-        else:
-            groups.append([item])
-
-    # Assign group_ids only for multi-item groups
-    group_count = 0
-    next_group_id = 1
-
-    # Find current max group_id to avoid collisions
-    for group in groups:
-        if len(group) < 2:
+        if best_cluster is None:
+            # No match — open a new singleton cluster (no gid until it grows).
+            clusters.append({"gid": None, "members": [item]})
             continue
-        for member in group:
-            db.set_group(member["id"], next_group_id)
-        next_group_id += 1
-        group_count += 1
 
+        if best_cluster["gid"] is None:
+            # First pairing of two previously-ungrouped items: mint a gid and
+            # persist the seed member too.
+            best_cluster["gid"] = next_gid
+            next_gid += 1
+            for m in best_cluster["members"]:
+                newly_assigned[m["id"]] = best_cluster["gid"]
+        gid = best_cluster["gid"]
+        best_cluster["members"].append(item)
+        newly_assigned[item["id"]] = gid
+        affected_gids.add(gid)
+
+    for item_id, gid in newly_assigned.items():
+        db.set_group(item_id, gid)
     db.commit()
-    return group_count
+
+    for gid in affected_gids:
+        db.recompute_group_primary(gid)
+
+    return len(affected_gids)
 
 
 def deep_semantic_dedup(
@@ -300,18 +311,20 @@ Return ONLY a JSON array, e.g. [1, 3] or []. No other text.""",
 
     logger.info(f"  Deep semantic dedup: Claude confirmed {len(confirmed_pairs)} same-story pairs.")
 
-    # Group confirmed pairs, preferring vendor URLs as primary
+    # Group confirmed pairs. The lead item is chosen afterwards by
+    # recompute_group_primary (vendor source preferred) — we no longer mutate
+    # `score` to force display order.
     grouped = 0
-    max_row = db.conn.execute("SELECT COALESCE(MAX(group_id), 0) FROM news_items").fetchone()
-    next_group_id = (max_row[0] or 0) + 1
+    next_group_id = db.max_group_id() + 1
+    affected_gids: set[int] = set()
 
     for title_a, title_b in confirmed_pairs:
         row_a = db.conn.execute(
-            "SELECT id, group_id, url FROM news_items WHERE LOWER(title) = ?",
+            "SELECT id, group_id FROM news_items WHERE LOWER(title) = ?",
             (title_a.lower().strip(),),
         ).fetchone()
         row_b = db.conn.execute(
-            "SELECT id, group_id, url FROM news_items WHERE LOWER(title) = ?",
+            "SELECT id, group_id FROM news_items WHERE LOWER(title) = ?",
             (title_b.lower().strip(),),
         ).fetchone()
 
@@ -331,47 +344,12 @@ Return ONLY a JSON array, e.g. [1, 3] or []. No other text.""",
             gid = next_group_id
             next_group_id += 1
 
-        # Assign both to the group
         db.conn.execute("UPDATE news_items SET group_id = ? WHERE id = ?", (gid, row_a["id"]))
         db.conn.execute("UPDATE news_items SET group_id = ? WHERE id = ?", (gid, row_b["id"]))
-
-        # Ensure vendor item is primary by giving it a slightly higher score
-        # within the group (query_grouped sorts by score DESC)
-        a_vendor = _is_vendor_url(row_a["url"])
-        b_vendor = _is_vendor_url(row_b["url"])
-        if b_vendor and not a_vendor:
-            # Swap scores if vendor item has lower score
-            scores = db.conn.execute(
-                "SELECT id, score FROM news_items WHERE id IN (?, ?)",
-                (row_a["id"], row_b["id"]),
-            ).fetchall()
-            score_map = {r["id"]: r["score"] for r in scores}
-            if score_map.get(row_b["id"], 0) < score_map.get(row_a["id"], 0):
-                db.conn.execute(
-                    "UPDATE news_items SET score = ? WHERE id = ?",
-                    (score_map[row_a["id"]], row_b["id"]),
-                )
-                db.conn.execute(
-                    "UPDATE news_items SET score = ? WHERE id = ?",
-                    (score_map[row_b["id"]], row_a["id"]),
-                )
-        elif a_vendor and not b_vendor:
-            scores = db.conn.execute(
-                "SELECT id, score FROM news_items WHERE id IN (?, ?)",
-                (row_a["id"], row_b["id"]),
-            ).fetchall()
-            score_map = {r["id"]: r["score"] for r in scores}
-            if score_map.get(row_a["id"], 0) < score_map.get(row_b["id"], 0):
-                db.conn.execute(
-                    "UPDATE news_items SET score = ? WHERE id = ?",
-                    (score_map[row_b["id"]], row_a["id"]),
-                )
-                db.conn.execute(
-                    "UPDATE news_items SET score = ? WHERE id = ?",
-                    (score_map[row_a["id"]], row_b["id"]),
-                )
-
+        affected_gids.add(gid)
         grouped += 1
 
     db.conn.commit()
+    for gid in affected_gids:
+        db.recompute_group_primary(gid)
     return grouped

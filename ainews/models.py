@@ -36,3 +36,4 @@ class ProcessedNewsItem:
     group_id: Optional[int] = None
     lo_generated_with_opus: bool = False
     starred: bool = False
+    is_primary: bool = False
