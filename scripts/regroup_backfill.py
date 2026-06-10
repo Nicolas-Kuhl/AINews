@@ -90,7 +90,9 @@ def main() -> int:
             return 0
 
         log.info("Running tuned grouper across all items...")
-        group_count = run_grouper(db)
+        # Backfill = full rebuild over the entire history (not the incremental
+        # windowed path the live pipeline uses).
+        group_count = run_grouper(db, rebuild=True, window_days=None)
         after_grouped_items = db.conn.execute(
             "SELECT COUNT(*) FROM news_items WHERE group_id IS NOT NULL"
         ).fetchone()[0]

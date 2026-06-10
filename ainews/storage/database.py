@@ -1,9 +1,31 @@
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
 
 from ainews.models import ProcessedNewsItem
+
+
+# First-party vendor domains. An item from one of these is preferred as the
+# "primary" (lead) story of a group, since the vendor's own announcement is the
+# canonical source. Shared by the grouper and the DB-layer primary selection so
+# there is a single source of truth.
+VENDOR_DOMAINS = {
+    "openai.com", "anthropic.com", "deepmind.google", "deepmind.com",
+    "blogs.microsoft.com", "ai.meta.com", "about.fb.com",
+    "stability.ai", "mistral.ai", "x.ai", "huggingface.co",
+    "blog.google", "nvidia.com",
+}
+
+
+def is_vendor_url(url: str) -> bool:
+    """True when the URL's host is (a subdomain of) a known vendor domain."""
+    try:
+        host = urlparse(url).netloc.lower().removeprefix("www.")
+        return any(host == d or host.endswith("." + d) for d in VENDOR_DOMAINS)
+    except Exception:
+        return False
 
 
 SCHEMA = """
@@ -161,6 +183,16 @@ class Database:
         try:
             self.conn.execute(
                 "ALTER TABLE news_items ADD COLUMN short_summary TEXT DEFAULT ''"
+            )
+            self.conn.commit()
+        except sqlite3.OperationalError:
+            pass
+        # Migrate: add is_primary column if missing. Marks the lead item within
+        # a group explicitly, replacing the old practice of swapping `score`
+        # values to force display order.
+        try:
+            self.conn.execute(
+                "ALTER TABLE news_items ADD COLUMN is_primary INTEGER DEFAULT 0"
             )
             self.conn.commit()
         except sqlite3.OperationalError:
@@ -398,8 +430,77 @@ class Database:
         )
 
     def clear_all_groups(self):
-        self.conn.execute("UPDATE news_items SET group_id = NULL")
+        self.conn.execute("UPDATE news_items SET group_id = NULL, is_primary = 0")
         self.conn.commit()
+
+    def max_group_id(self) -> int:
+        """Highest group_id currently assigned, or 0 if there are none."""
+        row = self.conn.execute(
+            "SELECT COALESCE(MAX(group_id), 0) FROM news_items"
+        ).fetchone()
+        return row[0] or 0
+
+    def get_recent_items_for_grouping(self, window_days: Optional[int]) -> list[dict]:
+        """Items considered by the incremental grouper.
+
+        Returns id, title, url, group_id for items published within the last
+        ``window_days`` (or all items when ``window_days`` is None). Ordered by
+        published ASC so older items act as the seed a later rewrite joins.
+        """
+        sql = "SELECT id, title, url, group_id FROM news_items"
+        params: list = []
+        if window_days is not None:
+            cutoff = (
+                datetime.now(timezone.utc) - timedelta(days=window_days)
+            ).isoformat()
+            # published is sometimes NULL for scraped items; keep those too so a
+            # fresh item without a date still participates in grouping.
+            sql += " WHERE (published >= ? OR published IS NULL)"
+            params.append(cutoff)
+        sql += " ORDER BY published ASC, id ASC"
+        rows = self.conn.execute(sql, params).fetchall()
+        return [
+            {"id": r["id"], "title": r["title"], "url": r["url"], "group_id": r["group_id"]}
+            for r in rows
+        ]
+
+    def get_group_items(self, group_id: int) -> list[dict]:
+        """Full membership of a group: id, url, score, published (for primary pick)."""
+        rows = self.conn.execute(
+            "SELECT id, url, score, published FROM news_items WHERE group_id = ?",
+            (group_id,),
+        ).fetchall()
+        return [
+            {"id": r["id"], "url": r["url"], "score": r["score"], "published": r["published"]}
+            for r in rows
+        ]
+
+    def recompute_group_primary(self, group_id: int) -> Optional[int]:
+        """Pick and flag the lead item of a group.
+
+        Rule: a vendor-domain item wins; then the highest score; then the
+        earliest published (the original break of the story). Sets is_primary=1
+        on the winner and 0 on the rest. Returns the primary's id, or None for
+        an empty/singleton-less group.
+        """
+        members = self.get_group_items(group_id)
+        if not members:
+            return None
+
+        # Stable two-pass sort (sorts are stable, so the first key breaks ties
+        # of the second): earliest published first, then vendor+score best-first.
+        # NULL published sorts last — an undated item is the weakest "original".
+        members.sort(key=lambda m: m["published"] or "9999")
+        members.sort(key=lambda m: (is_vendor_url(m["url"]), m["score"]), reverse=True)
+        primary = members[0]
+        self.conn.execute(
+            "UPDATE news_items SET is_primary = 0 WHERE group_id = ?", (group_id,)
+        )
+        self.conn.execute(
+            "UPDATE news_items SET is_primary = 1 WHERE id = ?", (primary["id"],)
+        )
+        self.conn.commit()
+        return primary["id"]
 
     def group_by_title_pairs(self, title_pairs: list[tuple[str, str]]) -> int:
         """Group items whose titles match the given (title_a, title_b) pairs.
@@ -409,8 +510,8 @@ class Database:
         Returns the number of new groupings made.
         """
         grouped = 0
-        max_row = self.conn.execute("SELECT COALESCE(MAX(group_id), 0) FROM news_items").fetchone()
-        next_group_id = (max_row[0] or 0) + 1
+        next_group_id = self.max_group_id() + 1
+        affected_gids: set[int] = set()
 
         for title_a, title_b in title_pairs:
             row_a = self.conn.execute(
@@ -440,9 +541,12 @@ class Database:
 
             self.conn.execute("UPDATE news_items SET group_id = ? WHERE id = ?", (gid, row_a["id"]))
             self.conn.execute("UPDATE news_items SET group_id = ? WHERE id = ?", (gid, row_b["id"]))
+            affected_gids.add(gid)
             grouped += 1
 
         self.conn.commit()
+        for gid in affected_gids:
+            self.recompute_group_primary(gid)
         return grouped
 
     def commit(self):
@@ -507,7 +611,9 @@ class Database:
                     continue
                 seen_groups.add(item.group_id)
                 members = groups[item.group_id]
-                # Primary = first in list (already sorted by score DESC)
+                # Primary = the explicitly flagged is_primary item; fall back to
+                # highest score for groups not yet touched by the new grouper.
+                members = sorted(members, key=lambda m: (m.is_primary, m.score), reverse=True)
                 primary = members[0]
                 related = members[1:]
                 result.append((primary, related))
@@ -595,7 +701,10 @@ class Database:
             return d
 
         def _sort_key(it: ProcessedNewsItem):
-            return (it.score, _norm(it.published))
+            # Flagged primary leads; then score; then most recent. The
+            # is_primary term keeps the chosen lead consistent with the grouper
+            # instead of letting raw score decide.
+            return (it.is_primary, it.score, _norm(it.published))
 
         for members in groups_by_gid.values():
             members.sort(key=_sort_key, reverse=True)
@@ -825,6 +934,10 @@ class Database:
             short_summary = row["short_summary"] or ""
         except (IndexError, KeyError):
             short_summary = ""
+        try:
+            is_primary = bool(row["is_primary"])
+        except (IndexError, KeyError):
+            is_primary = False
         return ProcessedNewsItem(
             id=row["id"],
             title=row["title"],
@@ -844,6 +957,7 @@ class Database:
             lo_generated_with_opus=lo_generated_with_opus,
             starred=starred,
             short_summary=short_summary,
+            is_primary=is_primary,
         )
 
     def __enter__(self):

@@ -685,8 +685,9 @@ def _render_settings_tab(cfg, db, project_root):
             if st.button("Run Smart Grouper", key="run_grouper", type="primary"):
                 from ainews.processing.grouper import run_grouper
                 with st.spinner("Grouping items..."):
-                    count = run_grouper(db)
-                st.success(f"Done — created {count} groups.")
+                    # Manual button = explicit full regroup over all history.
+                    count = run_grouper(db, rebuild=True, window_days=None)
+                st.success(f"Done — regrouped, {count} groups touched.")
                 st.rerun()
         with grouper_col2:
             if st.button("Deep Semantic Dedup", key="run_deep_dedup"):
