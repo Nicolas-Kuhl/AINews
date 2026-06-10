@@ -91,8 +91,13 @@ class Database:
     def __init__(self, db_path: str):
         self.db_path = db_path  # Store path for later use
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(db_path)
+        self.conn = sqlite3.connect(db_path, timeout=15)
         self.conn.row_factory = sqlite3.Row
+        # Wait up to 15s for a competing writer to release the lock instead of
+        # failing immediately with "database is locked". The dashboard and the
+        # cron pipeline each open their own connection to this file, so short
+        # write contention is expected. (WAL is intentionally NOT enabled here.)
+        self.conn.execute("PRAGMA busy_timeout = 15000")
         self._init_schema()
 
     def _init_schema(self):

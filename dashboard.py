@@ -243,6 +243,9 @@ def _render_triage_preview():
         layout="wide",
         initial_sidebar_state="collapsed",
     )
+    # Gate the default UI behind auth, same as the legacy and settings routes.
+    # Without this, the triage console (the default) was reachable unauthenticated.
+    check_authentication()
     st.markdown(
         """
         <style>
