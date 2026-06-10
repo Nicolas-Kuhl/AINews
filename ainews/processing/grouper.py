@@ -256,16 +256,29 @@ Return ONLY a JSON array, e.g. [1, 3] or []. No other text.""",
                     batch_start, batch_start + len(batch),
                 )
                 continue
-            # Extract the first JSON array in the response (Claude sometimes
-            # wraps it in markdown fences despite the instruction).
-            m = re.search(r"\[[\s\S]*?\]", response_text)
-            payload = m.group(0) if m else response_text
-            batch_indices = json.loads(payload)
-            if not isinstance(batch_indices, list):
-                batch_indices = []
+            # Strip markdown fences if present
+            stripped = re.sub(r"^```(?:json)?\s*|\s*```$", "", response_text).strip()
+            # Find the outermost JSON array (handles both flat [1,2,3] and
+            # cluster-of-clusters [[1,2],[3,4]] schemas the model sometimes
+            # returns despite the instruction).
+            m = re.search(r"\[[\s\S]*\]", stripped)
+            payload = m.group(0) if m else stripped
+            batch_data = json.loads(payload)
+            # Normalise to a flat list of integers. Cluster schema means each
+            # sub-list is a set of indices to be merged — every index in it
+            # is part of a confirmed-same-story group, so all of them count.
+            flat: list[int] = []
+            if isinstance(batch_data, list):
+                for entry in batch_data:
+                    if isinstance(entry, int):
+                        flat.append(entry)
+                    elif isinstance(entry, list):
+                        for k in entry:
+                            if isinstance(k, int):
+                                flat.append(k)
             # Remap batch-relative 1-based indices to global positions.
-            for k in batch_indices:
-                if isinstance(k, int) and 1 <= k <= len(batch):
+            for k in flat:
+                if 1 <= k <= len(batch):
                     match_indices.append(batch_start + k)
         except Exception as e:
             logger.warning(
