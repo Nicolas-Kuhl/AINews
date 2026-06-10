@@ -294,10 +294,20 @@ sudo systemctl restart nginx
 # Create cron jobs for fetch pipeline
 # Trusted sources: every 15 minutes
 # Open sources: once daily at 18:00 UTC (5am AEDT / 4am AEST)
-(crontab -l 2>/dev/null || echo ""; echo "# AI News Aggregator — trusted sources every 15 min") | crontab -
-(crontab -l; echo "*/15 * * * * cd $APP_DIR && $APP_DIR/venv/bin/python fetch_news.py --category trusted >> $APP_DIR/data/pipeline.log 2>&1") | crontab -
-(crontab -l; echo "# AI News Aggregator — open sources daily at 5am AEDT (18:00 UTC)") | crontab -
-(crontab -l; echo "0 18 * * * cd $APP_DIR && $APP_DIR/venv/bin/python fetch_news.py --category open >> $APP_DIR/data/pipeline.log 2>&1") | crontab -
+# Backup: daily DB snapshot at 18:30 UTC (after the open-sources run)
+#
+# Idempotent: strip any prior AINews-managed lines (tagged with the marker
+# below) before re-adding, so re-running this script never duplicates jobs.
+CRON_MARKER="# ainews-managed"
+NEW_CRON=$(cat <<EOF
+*/15 * * * * cd $APP_DIR && $APP_DIR/venv/bin/python fetch_news.py --category trusted >> $APP_DIR/data/pipeline.log 2>&1 $CRON_MARKER
+0 18 * * * cd $APP_DIR && $APP_DIR/venv/bin/python fetch_news.py --category open >> $APP_DIR/data/pipeline.log 2>&1 $CRON_MARKER
+30 18 * * * $APP_DIR/scripts/backup_db.sh >> $APP_DIR/data/backup.log 2>&1 $CRON_MARKER
+EOF
+)
+# Keep all existing non-AINews lines, drop our previous ones, append the fresh set.
+{ crontab -l 2>/dev/null | grep -vF "$CRON_MARKER"; echo "$NEW_CRON"; } | crontab -
+chmod +x "$APP_DIR/scripts/backup_db.sh" 2>/dev/null || true
 
 # Start dashboard service
 sudo systemctl daemon-reload

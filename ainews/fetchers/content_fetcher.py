@@ -61,7 +61,7 @@ async def _fetch_all(
 ) -> None:
     """Fetch content for all items concurrently."""
     semaphore = asyncio.Semaphore(max_concurrent)
-    async with httpx.AsyncClient(timeout=timeout, verify=False) as client:
+    async with httpx.AsyncClient(timeout=timeout) as client:
         tasks = [_fetch_one(client, item, max_length, semaphore) for item in items]
         await asyncio.gather(*tasks)
 
