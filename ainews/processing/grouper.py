@@ -212,26 +212,33 @@ def deep_semantic_dedup(
 
     logger.info(f"  Deep semantic dedup: {len(candidates)} candidate pairs to review.")
 
-    # Build prompt with all candidate pairs in a single call
-    pair_parts = []
-    for i, (a, b) in enumerate(candidates):
-        summary_a = a["summary"][:200] if a["summary"] else "(no summary)"
-        summary_b = b["summary"][:200] if b["summary"] else "(no summary)"
-        pair_parts.append(
-            f'{i+1}. A: "{a["title"]}" ({a["source"]})\n'
-            f'   Summary: {summary_a}\n'
-            f'   B: "{b["title"]}" ({b["source"]})\n'
-            f'   Summary: {summary_b}'
-        )
-    pairs_text = "\n\n".join(pair_parts)
+    # Batch candidates to keep each Claude call bounded — a single 1000-pair
+    # call regularly truncates output or returns empty. ~150 pairs per call
+    # comfortably fits in max_tokens=4096 for the JSON-array response.
+    BATCH_SIZE = 150
+    match_indices: list[int] = []
+    for batch_start in range(0, len(candidates), BATCH_SIZE):
+        batch = candidates[batch_start : batch_start + BATCH_SIZE]
+        pair_parts = []
+        for j, (a, b) in enumerate(batch):
+            summary_a = a["summary"][:200] if a["summary"] else "(no summary)"
+            summary_b = b["summary"][:200] if b["summary"] else "(no summary)"
+            # Index within the BATCH (1-based); we remap to global below.
+            pair_parts.append(
+                f'{j+1}. A: "{a["title"]}" ({a["source"]})\n'
+                f'   Summary: {summary_a}\n'
+                f'   B: "{b["title"]}" ({b["source"]})\n'
+                f'   Summary: {summary_b}'
+            )
+        pairs_text = "\n\n".join(pair_parts)
 
-    try:
-        response = client.messages.create(
-            model=model,
-            max_tokens=4096,
-            messages=[{
-                "role": "user",
-                "content": f"""You are a news deduplication assistant. For each pair below, determine if article A is about the same specific news story/event as article B. Use the titles, sources, and summaries to make your judgment.
+        try:
+            response = client.messages.create(
+                model=model,
+                max_tokens=4096,
+                messages=[{
+                    "role": "user",
+                    "content": f"""You are a news deduplication assistant. For each pair below, determine if article A is about the same specific news story/event as article B. Use the titles, sources, and summaries to make your judgment.
 
 Answer ONLY with a JSON array of pair numbers that ARE about the same story. If none match, return an empty array [].
 
@@ -240,16 +247,33 @@ Be strict: two articles must be about the same specific event or announcement to
 {pairs_text}
 
 Return ONLY a JSON array, e.g. [1, 3] or []. No other text.""",
-            }],
-        )
-
-        response_text = response.content[0].text.strip()
-        match_indices = json.loads(response_text)
-        if not isinstance(match_indices, list):
-            match_indices = []
-    except Exception as e:
-        logger.warning(f"  Deep semantic dedup error: {e}")
-        return 0
+                }],
+            )
+            response_text = (response.content[0].text or "").strip()
+            if not response_text:
+                logger.warning(
+                    "  Deep semantic dedup: empty response on batch %d-%d",
+                    batch_start, batch_start + len(batch),
+                )
+                continue
+            # Extract the first JSON array in the response (Claude sometimes
+            # wraps it in markdown fences despite the instruction).
+            m = re.search(r"\[[\s\S]*?\]", response_text)
+            payload = m.group(0) if m else response_text
+            batch_indices = json.loads(payload)
+            if not isinstance(batch_indices, list):
+                batch_indices = []
+            # Remap batch-relative 1-based indices to global positions.
+            for k in batch_indices:
+                if isinstance(k, int) and 1 <= k <= len(batch):
+                    match_indices.append(batch_start + k)
+        except Exception as e:
+            logger.warning(
+                "  Deep semantic dedup error on batch %d-%d: %s (resp head: %r)",
+                batch_start, batch_start + len(batch), e,
+                (response_text[:120] if 'response_text' in dir() else 'no-response'),
+            )
+            continue
 
     confirmed_pairs: list[tuple[str, str]] = []
     for idx in match_indices:
