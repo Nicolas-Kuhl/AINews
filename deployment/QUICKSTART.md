@@ -81,7 +81,7 @@ See [README-AWS.md](README-AWS.md#option-2-production-aws-deployment) for full g
 
 ---
 
-## 🐳 Local Testing: Docker (1 minute)
+## 💻 Local Testing (1 minute)
 
 Test before deploying:
 
@@ -90,21 +90,21 @@ Test before deploying:
 cp config.example.yaml config.yaml
 nano config.yaml  # Add API key
 
-# Start dashboard
-docker-compose up dashboard
+# Install deps and run the dashboard
+python -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+streamlit run dashboard.py   # http://localhost:8501
 
-# Run pipeline manually
-docker-compose run pipeline
-
-# Access at http://localhost:8501
+# Run the pipeline manually
+python fetch_news.py
 ```
 
 ---
 
 ## 📊 Comparison
 
-| Feature | EC2 | App Runner + ECS | Docker Local |
-|---------|-----|------------------|--------------|
+| Feature | EC2 | App Runner + ECS | Local |
+|---------|-----|------------------|-------|
 | Setup Time | 5 min | 30 min | 1 min |
 | Cost/month | $15 | $30-50 | $0 |
 | Auto-scaling | ❌ | ✅ | ❌ |
