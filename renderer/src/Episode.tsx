@@ -31,9 +31,11 @@ export const Episode: React.FC<EpisodeProps> = (props) => {
             : section.audio
               ? staticFile(section.audio)
               : null;
+          // The generated sting is mastered hot relative to the voiceover
+          const volume = section.kind === "intro" ? 0.35 : 1;
           return (
             <Series.Sequence key={section.key} durationInFrames={frames}>
-              {audioSrc ? <Audio src={audioSrc} /> : null}
+              {audioSrc ? <Audio src={audioSrc} volume={volume} /> : null}
               {section.kind === "intro" ? (
                 <IntroCard {...props} />
               ) : section.kind === "cold_open" ? (

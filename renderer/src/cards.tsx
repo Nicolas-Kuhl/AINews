@@ -1,7 +1,9 @@
 import {
   AbsoluteFill,
+  Img,
   interpolate,
   spring,
+  staticFile,
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
@@ -105,42 +107,98 @@ export const IntroCard: React.FC<EpisodeProps> = (props) => {
 };
 
 export const ColdOpenCard: React.FC<EpisodeProps> = (props) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
   const opacity = useCardOpacity();
   const entrance = useEntrance();
+  const headlines = props.sections
+    .filter((s) => s.kind === "segment")
+    .map((s) => s.headline ?? "");
+  // Stagger the rundown in over the first ~40% of the cold open
+  const revealEvery = Math.max(10, Math.round(fps * 0.7));
 
   return (
-    <AbsoluteFill
-      style={{
-        opacity,
-        padding: 140,
-        justifyContent: "center",
-        gap: 48,
-      }}
-    >
+    <AbsoluteFill style={{ opacity, padding: "100px 140px" }}>
       <Kicker>
         {props.showName} // {props.date}
       </Kicker>
       <div
         style={{
+          marginTop: 36,
           fontFamily: theme.sans,
           fontWeight: 800,
-          fontSize: 110,
-          lineHeight: 1.05,
+          fontSize: 76,
+          lineHeight: 1.08,
           color: theme.text,
-          maxWidth: 1500,
-          transform: `translateY(${(1 - entrance) * 60}px)`,
+          maxWidth: 1550,
+          transform: `translateY(${(1 - entrance) * 50}px)`,
         }}
       >
         {props.title}
       </div>
+
+      {/* Today's rundown — every headline in the episode */}
       <div
         style={{
-          fontFamily: theme.mono,
-          fontSize: 34,
-          color: theme.textDim,
+          marginTop: 64,
+          display: "flex",
+          flexDirection: "column",
+          gap: 30,
         }}
       >
-        {props.tagline}
+        <div
+          style={{
+            fontFamily: theme.mono,
+            fontSize: 26,
+            letterSpacing: "0.3em",
+            color: theme.accentCool,
+          }}
+        >
+          COMING UP
+        </div>
+        {headlines.map((h, i) => {
+          const t = frame - 20 - i * revealEvery;
+          const pop = spring({
+            frame: Math.max(0, t),
+            fps,
+            config: { damping: 200, stiffness: 130 },
+          });
+          const visible = t >= 0;
+          return (
+            <div
+              key={h}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 24,
+                opacity: visible ? pop : 0,
+                transform: `translateX(${visible ? (1 - pop) * -40 : -40}px)`,
+              }}
+            >
+              <span
+                style={{
+                  fontFamily: theme.mono,
+                  fontSize: 28,
+                  color: theme.accent,
+                  width: 46,
+                }}
+              >
+                {String(i + 1).padStart(2, "0")}
+              </span>
+              <span
+                style={{
+                  fontFamily: theme.sans,
+                  fontWeight: 600,
+                  fontSize: 40,
+                  color: theme.text,
+                  maxWidth: 1350,
+                }}
+              >
+                {h}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </AbsoluteFill>
   );
@@ -345,6 +403,36 @@ export const SignOffCard: React.FC<EpisodeProps> = (props) => {
       >
         {props.siteUrl}
       </div>
+      <Mascot />
     </AbsoluteFill>
+  );
+};
+
+/** The show's quality-control supervisor, peeking in from the corner. */
+const Mascot: React.FC = () => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  // Slide up from the bottom-right corner shortly after the card starts
+  const pop = spring({
+    frame: Math.max(0, frame - 15),
+    fps,
+    config: { damping: 16, stiffness: 90 },
+  });
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        right: 70,
+        bottom: 0,
+        transform: `translateY(${(1 - pop) * 320}px) rotate(${(1 - pop) * 6}deg)`,
+        transformOrigin: "bottom center",
+      }}
+    >
+      <Img
+        src={staticFile("branding/mascot.png")}
+        style={{ height: 320, display: "block" }}
+      />
+    </div>
   );
 };
