@@ -47,6 +47,13 @@ def load_config(path: Path = CONFIG_PATH) -> dict:
     vs.setdefault("words_per_minute", 155)
     vs.setdefault("show_name", "The Daily Prompt")
 
+    # TTS (Stage 2 of the daily video pipeline) defaults — Amazon Polly via
+    # instance-role credentials; us-east-1 has all engines/voices.
+    tts = cfg.setdefault("tts", {})
+    tts.setdefault("voice", "Ruth")
+    tts.setdefault("engine", "generative")
+    tts.setdefault("region", "us-east-1")
+
     # Newsletter defaults
     nl = cfg.setdefault("newsletters", {"enabled": False, "senders": []})
     nl.setdefault("enabled", False)
