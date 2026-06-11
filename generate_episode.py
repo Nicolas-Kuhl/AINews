@@ -16,6 +16,7 @@ Requires ELEVENLABS_API_KEY in the environment (sourced from .env).
 """
 
 import argparse
+import os
 import subprocess
 import sys
 import time
@@ -29,6 +30,30 @@ def _log(msg: str) -> None:
     print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}Z] {msg}", flush=True)
 
 
+def _alert(subject: str, message: str) -> None:
+    """Best-effort failure notification via SNS (AINEWS_ALERT_TOPIC_ARN).
+
+    Alerting must never make a bad night worse: all errors here are
+    swallowed after logging.
+    """
+    topic_arn = os.environ.get("AINEWS_ALERT_TOPIC_ARN", "").strip()
+    if not topic_arn:
+        _log("(no AINEWS_ALERT_TOPIC_ARN set — skipping failure alert)")
+        return
+    try:
+        import boto3
+
+        region = topic_arn.split(":")[3]
+        boto3.client("sns", region_name=region).publish(
+            TopicArn=topic_arn,
+            Subject=subject[:99],  # SNS subject limit
+            Message=message,
+        )
+        _log("failure alert sent")
+    except Exception as exc:  # noqa: BLE001
+        _log(f"WARNING: could not send alert: {exc}")
+
+
 def _stage(name: str, cmd: "list[str]") -> bool:
     _log(f"--- stage: {name} ---")
     started = time.monotonic()
@@ -36,6 +61,14 @@ def _stage(name: str, cmd: "list[str]") -> bool:
     elapsed = time.monotonic() - started
     if result.returncode != 0:
         _log(f"FAILED: {name} (exit {result.returncode}, {elapsed:.0f}s)")
+        _alert(
+            f"The Daily Prompt: nightly episode FAILED at stage '{name}'",
+            f"Stage '{name}' exited {result.returncode} after {elapsed:.0f}s.\n"
+            f"Command: {' '.join(cmd)}\n"
+            f"Check /opt/ainews/data/episode.log for details.\n"
+            f"Retry manually: cd /opt/ainews && set -a && . ./.env && set +a && "
+            f"venv/bin/python generate_episode.py",
+        )
         return False
     _log(f"ok: {name} ({elapsed:.0f}s)")
     return True

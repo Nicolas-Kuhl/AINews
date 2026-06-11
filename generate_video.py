@@ -67,10 +67,15 @@ def _instance_role_env() -> dict:
 def _stage_audio_on_s3(manifest: dict, audio_dir: Path, date: str, video_cfg: dict) -> dict:
     """Upload episode audio to S3 and swap props audio paths for presigned URLs."""
     import boto3
+    from botocore.config import Config
 
     bucket = video_cfg.get("assets_bucket", "ainews-render-assets")
     region = video_cfg.get("lambda_region", "us-east-1")
-    s3 = boto3.client("s3", region_name=region)
+    # Adaptive retries: a transient S3 error must not kill the nightly run
+    s3 = boto3.client(
+        "s3", region_name=region,
+        config=Config(retries={"max_attempts": 5, "mode": "adaptive"}),
+    )
 
     for section in manifest["sections"]:
         if section["kind"] == "intro":

@@ -53,27 +53,52 @@ const { renderId, bucketName } = await renderMediaOnLambda({
   codec: "h264",
 });
 
+// Poll with a hard deadline and tolerance for transient progress-API
+// errors: a hung render must fail loudly, not block the pipeline forever.
+const DEADLINE_MS = 30 * 60 * 1000; // far above the ~2 min normal render
+const MAX_CONSECUTIVE_ERRORS = 8;
+const startedAt = Date.now();
 let lastPct = -1;
+let pollInterval = 3000;
+let consecutiveErrors = 0;
 for (;;) {
-  const progress = await getRenderProgress({
-    renderId,
-    bucketName,
-    functionName,
-    region,
-  });
-  if (progress.fatalErrorEncountered) {
-    console.error("render failed:", progress.errors);
+  if (Date.now() - startedAt > DEADLINE_MS) {
+    console.error(`render timed out after ${DEADLINE_MS / 60000} minutes (renderId=${renderId})`);
     process.exit(1);
   }
-  if (progress.done) {
-    break;
+  try {
+    const progress = await getRenderProgress({
+      renderId,
+      bucketName,
+      functionName,
+      region,
+    });
+    consecutiveErrors = 0;
+    pollInterval = 3000;
+    if (progress.fatalErrorEncountered) {
+      console.error("render failed:", progress.errors);
+      process.exit(1);
+    }
+    if (progress.done) {
+      break;
+    }
+    const pct = Math.round((progress.overallProgress ?? 0) * 100);
+    if (pct !== lastPct) {
+      console.log(`progress ${pct}%`);
+      lastPct = pct;
+    }
+  } catch (err) {
+    consecutiveErrors += 1;
+    console.warn(
+      `getRenderProgress error (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}): ${err.message}`,
+    );
+    if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+      console.error("too many consecutive progress errors — giving up");
+      process.exit(1);
+    }
+    pollInterval = Math.min(pollInterval * 2, 30000);
   }
-  const pct = Math.round((progress.overallProgress ?? 0) * 100);
-  if (pct !== lastPct) {
-    console.log(`progress ${pct}%`);
-    lastPct = pct;
-  }
-  await new Promise((r) => setTimeout(r, 3000));
+  await new Promise((r) => setTimeout(r, pollInterval));
 }
 
 const { outputPath, sizeInBytes } = await downloadMedia({

@@ -32,7 +32,31 @@ import os
 from pathlib import Path
 from typing import Optional
 
+from tenacity import (
+    retry,
+    retry_if_exception,
+    stop_after_attempt,
+    wait_exponential,
+)
+
 logger = logging.getLogger(__name__)
+
+
+def _is_transient_http_error(exc: BaseException) -> bool:
+    """Retry connection problems and 429/5xx; never retry other 4xx."""
+    import httpx
+
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code in (429, 500, 502, 503, 504)
+    return isinstance(exc, httpx.HTTPError)
+
+
+_transient_retry = retry(
+    retry=retry_if_exception(_is_transient_http_error),
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=2, min=2, max=30),
+    reraise=True,
+)
 
 DEFAULT_PROVIDER = "elevenlabs"
 
@@ -104,9 +128,20 @@ class ElevenLabsTTS:
             f"Run generate_voiceover.py --sample to list and audition voices."
         )
 
-    def list_voices(self) -> "list[dict]":
-        resp = self.http.get("/voices")
+    @_transient_retry
+    def _get(self, path: str):
+        resp = self.http.get(path)
         resp.raise_for_status()
+        return resp
+
+    @_transient_retry
+    def _post(self, path: str, **kwargs):
+        resp = self.http.post(path, **kwargs)
+        resp.raise_for_status()
+        return resp
+
+    def list_voices(self) -> "list[dict]":
+        resp = self._get("/voices")
         return [
             {
                 "voice_id": v["voice_id"],
@@ -117,16 +152,19 @@ class ElevenLabsTTS:
         ]
 
     def synthesize(self, text: str) -> "tuple[bytes, Optional[str]]":
-        """Return (mp3_bytes, word_marks_jsonl). One call, always in sync."""
+        """Return (mp3_bytes, word_marks_jsonl). One call, always in sync.
+
+        Transient errors (connection, 429, 5xx) retry up to 3 times with
+        backoff — a single ElevenLabs blip must not kill the nightly episode.
+        """
         payload: dict = {"text": text, "model_id": self.model_id}
         if self.speed and self.speed != 1.0:
             payload["voice_settings"] = {"speed": self.speed}
-        resp = self.http.post(
+        resp = self._post(
             f"/text-to-speech/{self.voice_id}/with-timestamps",
             params={"output_format": "mp3_44100_128"},
             json=payload,
         )
-        resp.raise_for_status()
         data = resp.json()
         audio = base64.b64decode(data["audio_base64"])
         marks = _alignment_to_word_marks(data.get("alignment"))
