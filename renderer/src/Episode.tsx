@@ -24,9 +24,16 @@ export const Episode: React.FC<EpisodeProps> = (props) => {
           const frames = Math.ceil(
             (section.durationSeconds + SECTION_GAP_SECONDS) * fps,
           );
+          // Local renders bundle audio via staticFile; Lambda renders get
+          // S3 presigned URLs (the function can't see the EC2 disk).
+          const audioSrc = section.audio.startsWith("http")
+            ? section.audio
+            : section.audio
+              ? staticFile(section.audio)
+              : null;
           return (
             <Series.Sequence key={section.key} durationInFrames={frames}>
-              {section.audio ? <Audio src={staticFile(section.audio)} /> : null}
+              {audioSrc ? <Audio src={audioSrc} /> : null}
               {section.kind === "cold_open" ? (
                 <ColdOpenCard {...props} />
               ) : section.kind === "sign_off" ? (

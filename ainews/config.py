@@ -62,6 +62,14 @@ def load_config(path: Path = CONFIG_PATH) -> dict:
     if env_el_key:
         tts["api_key"] = env_el_key
 
+    # Video render defaults (Stage 3). "lambda" renders distributed on
+    # Remotion Lambda (~2-3 min/episode); "local" renders on this machine.
+    video = cfg.setdefault("video", {})
+    video.setdefault("render_engine", "lambda")
+    video.setdefault("lambda_region", "us-east-1")
+    video.setdefault("lambda_site", "ainews")
+    video.setdefault("assets_bucket", "ainews-render-assets")
+
     # Newsletter defaults
     nl = cfg.setdefault("newsletters", {"enabled": False, "senders": []})
     nl.setdefault("enabled", False)

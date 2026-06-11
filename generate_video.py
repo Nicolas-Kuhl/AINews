@@ -27,6 +27,27 @@ PROJECT_ROOT = Path(__file__).parent
 RENDERER_DIR = PROJECT_ROOT / "renderer"
 
 
+def _stage_audio_on_s3(manifest: dict, audio_dir: Path, date: str, video_cfg: dict) -> dict:
+    """Upload episode audio to S3 and swap props audio paths for presigned URLs."""
+    import boto3
+
+    bucket = video_cfg.get("assets_bucket", "ainews-render-assets")
+    region = video_cfg.get("lambda_region", "us-east-1")
+    s3 = boto3.client("s3", region_name=region)
+
+    for section in manifest["sections"]:
+        filename = Path(section["audio"]).name
+        key = f"audio/{date}/{filename}"
+        s3.upload_file(str(audio_dir / filename), bucket, key)
+        section["audio"] = s3.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": bucket, "Key": key},
+            ExpiresIn=4 * 3600,
+        )
+    print(f"Audio staged on s3://{bucket}/audio/{date}/ (presigned, 4h)")
+    return manifest
+
+
 def main():
     parser = argparse.ArgumentParser(description="Render the daily episode MP4")
     parser.add_argument("--date", type=str, help="Episode date YYYY-MM-DD (default: today UTC)")
@@ -37,6 +58,8 @@ def main():
                         help="Fast test render: half resolution, 2 render workers")
     parser.add_argument("--concurrency", type=int,
                         help="Override Chromium render workers (default: 1, preview: 2)")
+    parser.add_argument("--local", action="store_true",
+                        help="Render on this machine instead of Remotion Lambda")
     args = parser.parse_args()
 
     date = args.date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -57,17 +80,32 @@ def main():
 
     cfg = load_config()
     show_name = cfg.get("video_script", {}).get("show_name", "The Daily Prompt")
-
-    # Stage audio under renderer/public so Remotion's staticFile() can see it
-    public_audio = RENDERER_DIR / "public" / "audio" / date
-    public_audio.mkdir(parents=True, exist_ok=True)
-    for entry in audio_manifest["sections"]:
-        shutil.copy2(audio_dir / entry["audio"], public_audio / entry["audio"])
+    video_cfg = cfg.get("video", {})
+    # Stills and previews are quick local Chromium jobs; full renders go to
+    # Remotion Lambda unless --local or render_engine says otherwise.
+    use_lambda = (
+        video_cfg.get("render_engine", "lambda") == "lambda"
+        and not args.local
+        and not args.preview
+        and args.still is None
+    )
 
     manifest = build_render_manifest(
         script, audio_manifest, audio_dir,
         audio_rel_prefix=f"audio/{date}", show_name=show_name, date=date,
     )
+
+    if use_lambda:
+        # Lambda renderers can't reach this disk — audio goes to S3 and the
+        # props point at presigned URLs (valid well past any render).
+        manifest = _stage_audio_on_s3(manifest, audio_dir, date, video_cfg)
+    else:
+        # Stage audio under renderer/public so Remotion's staticFile() sees it
+        public_audio = RENDERER_DIR / "public" / "audio" / date
+        public_audio.mkdir(parents=True, exist_ok=True)
+        for entry in audio_manifest["sections"]:
+            shutil.copy2(audio_dir / entry["audio"], public_audio / entry["audio"])
+
     props_path = write_render_manifest(manifest, RENDERER_DIR / "public" / f"props-{date}.json")
 
     total = sum(s["durationSeconds"] for s in manifest["sections"])
@@ -92,6 +130,11 @@ def main():
         out = PROJECT_ROOT / "data" / "videos" / f"{date}-preview.mp4"
         cmd = ["npx", "remotion", "render", "src/index.ts", "Episode", str(out),
                f"--props={props_path}", *extra_flags]
+    elif use_lambda:
+        out = Path(args.output) if args.output else PROJECT_ROOT / "data" / "videos" / f"{date}.mp4"
+        cmd = ["node", "render-lambda.mjs", str(props_path), str(out),
+               video_cfg.get("lambda_region", "us-east-1"),
+               video_cfg.get("lambda_site", "ainews")]
     else:
         out = Path(args.output) if args.output else PROJECT_ROOT / "data" / "videos" / f"{date}.mp4"
         cmd = ["npx", "remotion", "render", "src/index.ts", "Episode", str(out),
