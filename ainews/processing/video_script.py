@@ -336,7 +336,7 @@ def generate_script(
     )
 
     messages = [{"role": "user", "content": prompt}]
-    response = client.messages.create(model=model, max_tokens=4000, messages=messages)
+    response = client.messages.create(model=model, max_tokens=8000, messages=messages)
     text = response.content[0].text
     script = _parse_script_json(text)
     _validate_script(script, n_stories)
@@ -362,7 +362,7 @@ def generate_script(
                 actual_words=actual, target_words=target_words, direction=direction
             ),
         })
-        response = client.messages.create(model=model, max_tokens=4000, messages=messages)
+        response = client.messages.create(model=model, max_tokens=8000, messages=messages)
         revised = _parse_script_json(response.content[0].text)
         try:
             _validate_script(revised, n_stories)
