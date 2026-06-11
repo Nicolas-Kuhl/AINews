@@ -185,29 +185,69 @@ def _validate_script(script: dict, n_stories: int) -> None:
                 )
 
 
+def previously_covered_urls(scripts_dir: Path, days: int = 14) -> "set[str]":
+    """URLs already used by recent episodes (so stories never repeat).
+
+    Reads the ``meta.story_urls`` of every episode script in the window.
+    """
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+    covered: "set[str]" = set()
+    if not scripts_dir.exists():
+        return covered
+    for path in scripts_dir.glob("*.json"):
+        if path.stem < cutoff:
+            continue
+        try:
+            with open(path, encoding="utf-8") as f:
+                covered.update(json.load(f).get("meta", {}).get("story_urls", []))
+        except (json.JSONDecodeError, OSError):
+            continue
+    return covered
+
+
 def select_stories(
     db: Database,
     *,
-    hours: int = 24,
+    hours: int = 72,
     min_score: int = 6,
     max_stories: int = 7,
     now: Optional[datetime] = None,
+    on_date: Optional[str] = None,
+    exclude_urls: "Optional[set[str]]" = None,
 ) -> list:
-    """Pick the top story groups of the window as (primary, [related]) pairs.
+    """Pick the top story groups as (primary, [related]) pairs.
+
+    Default window is a 72h lookback — wide enough that a major story
+    published just before yesterday's episode cutoff still gets picked up —
+    combined with ``exclude_urls`` (stories covered by earlier episodes) so
+    nothing repeats. ``on_date`` switches to an exact UTC calendar day
+    instead, for regenerating a specific date's episode.
 
     Includes acknowledged items — a story the user already triaged is still
     news to the video audience.
     """
-    now = now or datetime.now(timezone.utc)
-    start = now - timedelta(hours=hours)
+    if on_date:
+        start = datetime.fromisoformat(on_date).replace(tzinfo=timezone.utc)
+        end: Optional[datetime] = start + timedelta(days=1)
+    else:
+        now = now or datetime.now(timezone.utc)
+        start = now - timedelta(hours=hours)
+        end = None
     pairs = db.query_grouped(
         min_score=min_score,
         start_date=start,
+        end_date=end,
         show_acknowledged=True,
         sort_by="score",
         sort_dir="DESC",
         limit=100,
     )
+    if exclude_urls:
+        pairs = [
+            (primary, related) for primary, related in pairs
+            if primary.url not in exclude_urls
+            and not any(r.url in exclude_urls for r in related)
+        ]
     return pairs[:max_stories]
 
 
@@ -346,13 +386,15 @@ def run_video_script(
     client: anthropic.Anthropic,
     *,
     output_dir: Path,
-    hours: int = 24,
+    hours: int = 72,
     min_score: int = 6,
     max_stories: int = 7,
     target_minutes: float = 5.0,
     words_per_minute: int = DEFAULT_WORDS_PER_MINUTE,
     model: str = DEFAULT_SCRIPT_MODEL,
     show_name: str = "The Daily Prompt",
+    on_date: Optional[str] = None,
+    exclude_covered: bool = True,
     logger: Optional[logging.Logger] = None,
 ) -> dict:
     """End-to-end Stage 1: select stories, generate, persist.
@@ -361,13 +403,17 @@ def run_video_script(
     ``{"status": "no-stories"}`` when the window has nothing scriptworthy.
     """
     log = logger or logging.getLogger(__name__)
+    exclude_urls = previously_covered_urls(output_dir) if exclude_covered else set()
+    if exclude_urls:
+        log.info("Video script: excluding %d previously covered stories", len(exclude_urls))
     stories = select_stories(
-        db, hours=hours, min_score=min_score, max_stories=max_stories
+        db, hours=hours, min_score=min_score, max_stories=max_stories,
+        on_date=on_date, exclude_urls=exclude_urls,
     )
     if not stories:
         log.info(
-            "Video script: no stories with score >= %d in the last %dh, skipping",
-            min_score, hours,
+            "Video script: no uncovered stories with score >= %d in the window, skipping",
+            min_score,
         )
         return {"status": "no-stories"}
 
@@ -380,7 +426,7 @@ def run_video_script(
         model=model, target_minutes=target_minutes,
         words_per_minute=words_per_minute, show_name=show_name, logger=log,
     )
-    day_key = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    day_key = on_date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
     json_path, md_path = write_script_files(script, output_dir, day_key)
     log.info(
         "Video script written: %s (%d words, ~%ds)",

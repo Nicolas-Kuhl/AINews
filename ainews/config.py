@@ -40,7 +40,7 @@ def load_config(path: Path = CONFIG_PATH) -> dict:
 
     # Video script (Stage 1 of the daily video pipeline) defaults
     vs = cfg.setdefault("video_script", {})
-    vs.setdefault("hours", 24)
+    vs.setdefault("hours", 72)  # wide lookback; previously-covered stories are excluded
     vs.setdefault("min_score", 6)
     vs.setdefault("max_stories", 7)
     vs.setdefault("target_minutes", 5)
@@ -55,7 +55,7 @@ def load_config(path: Path = CONFIG_PATH) -> dict:
     tts.setdefault("provider", "elevenlabs")
     tts.setdefault("voice", "LtPsVjX1k0Kl4StEMZPK")  # Sophia — Young Australian Female
     tts.setdefault("model", "eleven_multilingual_v2")
-    tts.setdefault("speed", 1.1)  # Sophia's natural pace runs slow for news
+    tts.setdefault("speed", 1.15)  # Sophia's natural pace runs slow for news
     tts.setdefault("polly_voice", "Olivia")  # en-AU generative (fallback)
     tts.setdefault("polly_engine", "generative")
     tts.setdefault("region", "us-east-1")

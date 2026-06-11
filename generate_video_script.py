@@ -28,6 +28,10 @@ from ainews.storage.database import Database
 def main():
     parser = argparse.ArgumentParser(description="Generate the daily video episode script")
     parser.add_argument("--hours", type=int, help="Lookback window in hours")
+    parser.add_argument("--date", type=str, metavar="YYYY-MM-DD",
+                        help="Generate for an exact UTC calendar day instead of the lookback window")
+    parser.add_argument("--include-covered", action="store_true",
+                        help="Allow stories already used by previous episodes")
     parser.add_argument("--min-score", type=int, help="Minimum story score to consider")
     parser.add_argument("--max-stories", type=int, help="Maximum stories in the episode")
     parser.add_argument("--minutes", type=float, help="Target runtime in minutes")
@@ -57,13 +61,15 @@ def main():
         result = run_video_script(
             db, client,
             output_dir=output_dir,
-            hours=args.hours or vs_cfg.get("hours", 24),
+            hours=args.hours or vs_cfg.get("hours", 72),
             min_score=args.min_score or vs_cfg.get("min_score", 6),
             max_stories=args.max_stories or vs_cfg.get("max_stories", 7),
             target_minutes=args.minutes or vs_cfg.get("target_minutes", 5),
             words_per_minute=vs_cfg.get("words_per_minute", 155),
             model=vs_cfg.get("model", cfg.get("model", "claude-sonnet-4-6")),
             show_name=vs_cfg.get("show_name", "The Daily Prompt"),
+            on_date=args.date,
+            exclude_covered=not args.include_covered,
             logger=logger,
         )
     finally:

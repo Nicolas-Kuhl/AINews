@@ -256,3 +256,66 @@ class OutputTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StorySelectionWindowTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmpdir = tempfile.mkdtemp()
+        self.db = Database(os.path.join(self.tmpdir, "t.db"))
+
+    def tearDown(self) -> None:
+        self.db.close()
+
+    def test_exclude_urls_drops_covered_stories(self):
+        self.db.insert(_item("Covered story", score=9))
+        self.db.insert(_item("Fresh story", score=8))
+        covered = [i for i in self.db.query_items(limit=10) if i.title == "Covered story"]
+
+        stories = select_stories(
+            self.db, hours=72, min_score=6, max_stories=5,
+            exclude_urls={covered[0].url},
+        )
+
+        self.assertEqual([p.title for p, _ in stories], ["Fresh story"])
+
+    def test_wide_lookback_catches_older_big_story(self):
+        self.db.insert(_item("Two days ago banger", score=9, hours_ago=50))
+        self.db.insert(_item("Today's medium story", score=6, hours_ago=2))
+
+        stories = select_stories(self.db, hours=72, min_score=6, max_stories=5)
+
+        self.assertEqual(stories[0][0].title, "Two days ago banger")
+
+    def test_on_date_selects_exact_calendar_day(self):
+        from datetime import datetime, timezone
+        day = (datetime.now(timezone.utc) - timedelta(days=2)).strftime("%Y-%m-%d")
+        self.db.insert(_item("On the day", score=8, hours_ago=48))
+        self.db.insert(_item("Today instead", score=9, hours_ago=1))
+
+        stories = select_stories(self.db, on_date=day, min_score=6, max_stories=5)
+
+        titles = [p.title for p, _ in stories]
+        self.assertIn("On the day", titles)
+        self.assertNotIn("Today instead", titles)
+
+
+class PreviouslyCoveredUrlsTests(unittest.TestCase):
+    def test_reads_story_urls_from_recent_scripts(self):
+        import json as _json
+        from datetime import datetime, timezone
+        from ainews.processing.video_script import previously_covered_urls
+
+        tmp = Path(tempfile.mkdtemp())
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        with open(tmp / f"{today}.json", "w", encoding="utf-8") as f:
+            _json.dump({"meta": {"story_urls": ["https://a", "https://b"]}}, f)
+        with open(tmp / "2020-01-01.json", "w", encoding="utf-8") as f:
+            _json.dump({"meta": {"story_urls": ["https://ancient"]}}, f)
+
+        covered = previously_covered_urls(tmp, days=14)
+
+        self.assertEqual(covered, {"https://a", "https://b"})
+
+    def test_missing_dir_returns_empty(self):
+        from ainews.processing.video_script import previously_covered_urls
+        self.assertEqual(previously_covered_urls(Path("/nonexistent-dir-xyz")), set())
