@@ -168,7 +168,9 @@ def main():
         cmd = ["npx", "remotion", "render", "src/index.ts", "Episode", str(out),
                f"--props={props_path}", *extra_flags]
     elif use_lambda:
-        out = Path(args.output) if args.output else PROJECT_ROOT / "data" / "videos" / f"{date}.mp4"
+        # Resolve to absolute: the node driver runs with cwd=renderer/.
+        out = (Path(args.output).resolve() if args.output
+               else PROJECT_ROOT / "data" / "videos" / f"{date}.mp4")
         cmd = ["node", "render-lambda.mjs", str(props_path), str(out),
                video_cfg.get("lambda_region", "us-east-1"),
                video_cfg.get("lambda_site", "ainews")]
