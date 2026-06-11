@@ -76,15 +76,64 @@ export const ColdOpenCard: React.FC<EpisodeProps> = (props) => {
   );
 };
 
+const BulletRow: React.FC<{ text: string; revealFrame: number }> = ({
+  text,
+  revealFrame,
+}) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const t = frame - revealFrame;
+  const pop = spring({
+    frame: Math.max(0, t),
+    fps,
+    config: { damping: 200, stiffness: 120 },
+  });
+  const visible = t >= 0;
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "flex-start",
+        gap: 28,
+        opacity: visible ? pop : 0,
+        transform: `translateX(${visible ? (1 - pop) * -50 : -50}px)`,
+      }}
+    >
+      <span
+        style={{
+          color: theme.accent,
+          fontFamily: theme.mono,
+          fontSize: 38,
+          lineHeight: 1.35,
+        }}
+      >
+        ▸
+      </span>
+      <span
+        style={{
+          fontFamily: theme.sans,
+          fontWeight: 600,
+          fontSize: 44,
+          lineHeight: 1.35,
+          color: theme.text,
+          maxWidth: 1250,
+        }}
+      >
+        {text}
+      </span>
+    </div>
+  );
+};
+
 export const SegmentCard: React.FC<{
   section: Section;
   episode: EpisodeProps;
 }> = ({ section, episode }) => {
-  const frame = useCurrentFrame();
   const opacity = useCardOpacity();
   const entrance = useEntrance();
-  // Slow float so long narration sections don't feel frozen
-  const drift = Math.sin(frame / 90) * 8;
+  const { fps } = useVideoConfig();
+  const bullets = section.bullets ?? [];
 
   return (
     <AbsoluteFill style={{ opacity, padding: 120 }}>
@@ -108,22 +157,41 @@ export const SegmentCard: React.FC<{
         </span>
       </div>
 
-      {/* headline */}
-      <AbsoluteFill style={{ justifyContent: "center", padding: 120 }}>
-        <div
-          style={{
-            fontFamily: theme.sans,
-            fontWeight: 800,
-            fontSize: 92,
-            lineHeight: 1.08,
-            color: theme.text,
-            maxWidth: 1480,
-            transform: `translateY(${(1 - entrance) * 80 + drift}px)`,
-          }}
-        >
-          {section.headline}
-        </div>
-      </AbsoluteFill>
+      {/* headline — top third, makes room for the slide bullets */}
+      <div
+        style={{
+          marginTop: 90,
+          fontFamily: theme.sans,
+          fontWeight: 800,
+          fontSize: 72,
+          lineHeight: 1.1,
+          color: theme.text,
+          maxWidth: 1500,
+          transform: `translateY(${(1 - entrance) * 60}px)`,
+          borderLeft: `10px solid ${theme.accent}`,
+          paddingLeft: 36,
+        }}
+      >
+        {section.headline}
+      </div>
+
+      {/* slideshow bullets, revealed in sync with the narration */}
+      <div
+        style={{
+          marginTop: 80,
+          display: "flex",
+          flexDirection: "column",
+          gap: 42,
+        }}
+      >
+        {bullets.map((b) => (
+          <BulletRow
+            key={b.text}
+            text={b.text}
+            revealFrame={Math.round(b.revealAtSeconds * fps)}
+          />
+        ))}
+      </div>
 
       {/* footer */}
       <div

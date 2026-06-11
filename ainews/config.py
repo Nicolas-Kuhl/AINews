@@ -53,6 +53,7 @@ def load_config(path: Path = CONFIG_PATH) -> dict:
     # Amazon Polly (instance-role credentials) when no key is present.
     tts = cfg.setdefault("tts", {})
     tts.setdefault("provider", "elevenlabs")
+    tts.setdefault("voice", "LtPsVjX1k0Kl4StEMZPK")  # Sophia — Young Australian Female
     tts.setdefault("model", "eleven_multilingual_v2")
     tts.setdefault("polly_voice", "Olivia")  # en-AU generative (fallback)
     tts.setdefault("polly_engine", "generative")

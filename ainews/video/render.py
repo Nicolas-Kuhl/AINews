@@ -38,6 +38,67 @@ def _section_kind(key: str) -> str:
     return "segment"
 
 
+_WORD_CLEAN_RE = __import__("re").compile(r"[^a-z0-9]+")
+
+
+def _norm_word(word: str) -> str:
+    return _WORD_CLEAN_RE.sub("", word.lower())
+
+
+def load_word_marks(marks_path: Path) -> "list[tuple[float, str]]":
+    """Parse a marks JSONL file into (seconds, normalized_word) tuples."""
+    out = []
+    for line in marks_path.read_text(encoding="utf-8").splitlines():
+        try:
+            mark = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if mark.get("type") == "word" and isinstance(mark.get("time"), (int, float)):
+            w = _norm_word(str(mark.get("value", "")))
+            if w:
+                out.append((mark["time"] / 1000, w))
+    return out
+
+
+def bullet_reveal_times(
+    bullets: "list[dict]",
+    marks: "list[tuple[float, str]]",
+    duration_seconds: float,
+) -> "list[dict]":
+    """Resolve each bullet's reveal time from its narration anchor phrase.
+
+    Anchors are matched as word sequences against the timestamped narration,
+    searching forward from the previous bullet's position (bullets arrive in
+    narration order). Unmatched anchors fall back to even spacing so a sloppy
+    anchor degrades gracefully instead of stacking everything at zero.
+    """
+    words = [w for _, w in marks]
+    resolved: "list[Optional[float]]" = []
+    search_from = 0
+    for bullet in bullets:
+        anchor = [w for w in (_norm_word(t) for t in bullet["anchor"].split()) if w]
+        found: Optional[float] = None
+        if anchor:
+            for i in range(search_from, len(words) - len(anchor) + 1):
+                if words[i : i + len(anchor)] == anchor:
+                    found = marks[i][0]
+                    search_from = i + len(anchor)
+                    break
+        resolved.append(found)
+
+    n = len(bullets)
+    out = []
+    for i, (bullet, t) in enumerate(zip(bullets, resolved)):
+        if t is None:
+            t = duration_seconds * (i + 1) / (n + 1)
+            logger.warning(
+                "Bullet anchor %r not found in narration marks — using fallback %.1fs",
+                bullet["anchor"], t,
+            )
+        out.append({"text": bullet["text"], "revealAtSeconds": round(t, 2)})
+    return out
+
+
 def build_render_manifest(
     script: dict,
     audio_manifest: dict,
@@ -84,6 +145,14 @@ def build_render_manifest(
             section["headline"] = seg["headline"]
             section["source"] = seg["source"]
             section["index"] = seg_idx
+            bullets = seg.get("bullets") or []
+            if bullets:
+                marks: "list[tuple[float, str]]" = []
+                if entry.get("marks"):
+                    marks_path = audio_dir / entry["marks"]
+                    if marks_path.exists():
+                        marks = load_word_marks(marks_path)
+                section["bullets"] = bullet_reveal_times(bullets, marks, duration)
         sections.append(section)
 
     if seg_idx != len(segments):

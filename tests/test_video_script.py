@@ -57,6 +57,10 @@ def _script_response(n_segments: int, words_per_section: int = 100) -> dict:
                 "source": "OpenAI News",
                 "url": f"https://example.com/{i}",
                 "narration": narration,
+                "bullets": [
+                    {"text": f"Fact {j}", "anchor": "word word"}
+                    for j in range(3)
+                ],
             }
             for i in range(n_segments)
         ],

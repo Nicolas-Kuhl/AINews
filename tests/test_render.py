@@ -78,3 +78,78 @@ class BuildRenderManifestTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BulletRevealTimesTests(unittest.TestCase):
+    MARKS = [
+        (0.0, "anthropic"), (0.4, "just"), (0.7, "dropped"), (1.1, "a"),
+        (1.3, "stat"), (2.0, "eighty"), (2.4, "percent"), (2.9, "of"),
+        (3.1, "code"), (4.0, "recursive"), (4.6, "selfimprovement"),
+    ]
+
+    def test_anchors_resolve_to_word_times(self):
+        from ainews.video.render import bullet_reveal_times
+        bullets = [
+            {"text": "B1", "anchor": "just dropped"},
+            {"text": "B2", "anchor": "eighty percent"},
+            {"text": "B3", "anchor": "recursive self-improvement"},
+        ]
+        out = bullet_reveal_times(bullets, self.MARKS, 10.0)
+        self.assertEqual([b["revealAtSeconds"] for b in out], [0.4, 2.0, 4.0])
+
+    def test_search_moves_forward_only(self):
+        from ainews.video.render import bullet_reveal_times
+        marks = [(0.0, "code"), (1.0, "and"), (2.0, "code"), (3.0, "again")]
+        bullets = [
+            {"text": "B1", "anchor": "code"},
+            {"text": "B2", "anchor": "code"},
+        ]
+        out = bullet_reveal_times(bullets, marks, 4.0)
+        self.assertEqual([b["revealAtSeconds"] for b in out], [0.0, 2.0])
+
+    def test_unmatched_anchor_falls_back_to_even_spacing(self):
+        from ainews.video.render import bullet_reveal_times
+        bullets = [
+            {"text": "B1", "anchor": "nonexistent phrase"},
+            {"text": "B2", "anchor": "also missing"},
+        ]
+        out = bullet_reveal_times(bullets, self.MARKS, 9.0)
+        self.assertEqual([b["revealAtSeconds"] for b in out], [3.0, 6.0])
+
+    def test_punctuation_and_case_insensitive(self):
+        from ainews.video.render import bullet_reveal_times
+        bullets = [{"text": "B", "anchor": "Eighty PERCENT,"}]
+        out = bullet_reveal_times(bullets, self.MARKS, 10.0)
+        self.assertEqual(out[0]["revealAtSeconds"], 2.0)
+
+
+class ManifestBulletsTests(unittest.TestCase):
+    def test_segment_bullets_resolved_from_marks_file(self):
+        import json as _json
+        import tempfile
+        from ainews.video.render import build_render_manifest
+
+        tmp = Path(tempfile.mkdtemp())
+        marks = "\n".join([
+            _json.dumps({"time": 0, "type": "word", "value": "hello"}),
+            _json.dumps({"time": 1200, "type": "word", "value": "eighty"}),
+            _json.dumps({"time": 1500, "type": "word", "value": "percent"}),
+            _json.dumps({"time": 3000, "type": "end"}),
+        ])
+        (tmp / "01-a.marks.jsonl").write_text(marks, encoding="utf-8")
+
+        script = _script()
+        script["segments"][0]["bullets"] = [
+            {"text": "Big number", "anchor": "eighty percent"},
+        ]
+        audio = _audio_manifest()
+        audio["sections"][1]["marks"] = "01-a.marks.jsonl"
+
+        manifest = build_render_manifest(
+            script, audio, tmp, audio_rel_prefix="audio/x",
+        )
+
+        seg = manifest["sections"][1]
+        self.assertEqual(seg["bullets"], [
+            {"text": "Big number", "revealAtSeconds": 1.2},
+        ])

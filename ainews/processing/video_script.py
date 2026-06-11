@@ -76,7 +76,13 @@ Episode structure — respond with VALID JSON ONLY, exactly this shape:
       "headline": "on-screen headline, max 8 words",
       "source": "primary source name, copied from the notes",
       "url": "primary story URL, copied from the notes",
-      "narration": "~{segment_words} words of narration for this story"
+      "narration": "~{segment_words} words of narration for this story",
+      "bullets": [
+        {{
+          "text": "on-screen bullet, max 8 words, a key fact",
+          "anchor": "VERBATIM 2-4 word phrase copied exactly from this segment's narration"
+        }}
+      ]
     }}
   ],
   "sign_off": "~{sign_off_words} words. Land one last laugh and sign off."
@@ -89,6 +95,12 @@ Hard requirements:
   {target_words} words, within about 10%. Count as you go.
 - Every segment's "source" and "url" must be copied verbatim from its story
   notes.
+- Each segment has 3-4 bullets — the on-screen slideshow supporting the
+  narration. Bullets are punchy facts (numbers, names, the "so what"), not
+  full sentences. Each bullet's "anchor" must be a SHORT phrase copied
+  character-for-character from that segment's narration, taken from the
+  moment the narration covers that bullet's content, in narration order —
+  the bullet appears on screen when the host says the anchor.
 
 Today's story notes:
 {stories_block}
@@ -163,6 +175,14 @@ def _validate_script(script: dict, n_stories: int) -> None:
         for key in ("headline", "narration", "source", "url"):
             if not seg.get(key):
                 raise ValueError(f"Segment {i + 1} missing required field: {key}")
+        bullets = seg.get("bullets") or []
+        if not isinstance(bullets, list) or not (2 <= len(bullets) <= 5):
+            raise ValueError(f"Segment {i + 1} needs 2-5 bullets, got {len(bullets)}")
+        for j, bullet in enumerate(bullets):
+            if not bullet.get("text") or not bullet.get("anchor"):
+                raise ValueError(
+                    f"Segment {i + 1} bullet {j + 1} missing text or anchor"
+                )
 
 
 def select_stories(

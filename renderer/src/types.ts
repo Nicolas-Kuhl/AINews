@@ -1,5 +1,11 @@
 export type SectionKind = "cold_open" | "segment" | "sign_off";
 
+export type Bullet = {
+  text: string;
+  /** When this bullet slides in, relative to the section start. */
+  revealAtSeconds: number;
+};
+
 export type Section = {
   kind: SectionKind;
   key: string;
@@ -10,6 +16,7 @@ export type Section = {
   source?: string;
   /** 1-based segment number (segments only) */
   index?: number;
+  bullets?: Bullet[];
 };
 
 export type EpisodeProps = {
