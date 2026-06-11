@@ -33,6 +33,10 @@ def main():
     parser.add_argument("--output", type=str, help="Output MP4 path")
     parser.add_argument("--still", type=int, metavar="FRAME",
                         help="Render a single frame as PNG instead of the full video")
+    parser.add_argument("--preview", action="store_true",
+                        help="Fast test render: half resolution, 2 render workers")
+    parser.add_argument("--concurrency", type=int,
+                        help="Override Chromium render workers (default: 1, preview: 2)")
     args = parser.parse_args()
 
     date = args.date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -70,14 +74,28 @@ def main():
     print(f"Episode {date}: {len(manifest['sections'])} sections, "
           f"{int(total // 60)}:{int(total % 60):02d} runtime")
 
+    extra_flags = []
+    if args.preview:
+        # Half resolution + two workers: ~3-4x faster, plenty for layout and
+        # timing checks. Preview output is suffixed so it never enters the
+        # podcast feed (the feed only picks up <date>.mp4).
+        extra_flags += ["--scale=0.5", "--concurrency=2"]
+    if args.concurrency:
+        extra_flags = [f for f in extra_flags if not f.startswith("--concurrency")]
+        extra_flags.append(f"--concurrency={args.concurrency}")
+
     if args.still is not None:
         out = PROJECT_ROOT / "data" / "videos" / f"{date}-frame{args.still}.png"
         cmd = ["npx", "remotion", "still", "src/index.ts", "Episode", str(out),
-               f"--frame={args.still}", f"--props={props_path}"]
+               f"--frame={args.still}", f"--props={props_path}", *extra_flags]
+    elif args.preview:
+        out = PROJECT_ROOT / "data" / "videos" / f"{date}-preview.mp4"
+        cmd = ["npx", "remotion", "render", "src/index.ts", "Episode", str(out),
+               f"--props={props_path}", *extra_flags]
     else:
         out = Path(args.output) if args.output else PROJECT_ROOT / "data" / "videos" / f"{date}.mp4"
         cmd = ["npx", "remotion", "render", "src/index.ts", "Episode", str(out),
-               f"--props={props_path}"]
+               f"--props={props_path}", *extra_flags]
 
     out.parent.mkdir(parents=True, exist_ok=True)
     print(f"Rendering -> {out}")
