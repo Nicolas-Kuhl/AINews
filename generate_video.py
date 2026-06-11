@@ -73,6 +73,8 @@ def _stage_audio_on_s3(manifest: dict, audio_dir: Path, date: str, video_cfg: di
     s3 = boto3.client("s3", region_name=region)
 
     for section in manifest["sections"]:
+        if section["kind"] == "intro":
+            continue  # site-bundled static asset, not per-episode audio
         filename = Path(section["audio"]).name
         key = f"audio/{date}/{filename}"
         s3.upload_file(str(audio_dir / filename), bucket, key)
@@ -127,9 +129,14 @@ def main():
         and args.still is None
     )
 
+    # Branded musical intro, if the sting asset has been chosen and committed
+    sting = RENDERER_DIR / "public" / "branding" / "intro-sting.mp3"
+    intro_audio = "branding/intro-sting.mp3" if sting.exists() else None
+
     manifest = build_render_manifest(
         script, audio_manifest, audio_dir,
         audio_rel_prefix=f"audio/{date}", show_name=show_name, date=date,
+        intro_audio=intro_audio,
     )
 
     if use_lambda:

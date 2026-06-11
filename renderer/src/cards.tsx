@@ -34,6 +34,76 @@ const Kicker: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   </div>
 );
 
+export const IntroCard: React.FC<EpisodeProps> = (props) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const entrance = spring({
+    frame,
+    fps,
+    config: { damping: 200, stiffness: 60 },
+  });
+
+  // Equalizer-style bars pulsing under the show name while the sting plays
+  const bars = Array.from({ length: 24 }, (_, i) => {
+    const h = 18 + Math.abs(Math.sin(frame / 5 + i * 0.9)) * 46;
+    return (
+      <div
+        key={i}
+        style={{
+          width: 12,
+          height: h,
+          borderRadius: 4,
+          background:
+            i % 3 === 0 ? theme.accent : i % 3 === 1 ? theme.accentCool : "#3F3F46",
+        }}
+      />
+    );
+  });
+
+  return (
+    <AbsoluteFill
+      style={{ justifyContent: "center", alignItems: "center", gap: 56 }}
+    >
+      <div
+        style={{
+          fontFamily: theme.sans,
+          fontWeight: 800,
+          fontSize: 130,
+          color: theme.text,
+          transform: `scale(${0.8 + entrance * 0.2})`,
+          opacity: entrance,
+          letterSpacing: "-0.02em",
+        }}
+      >
+        {props.showName}
+      </div>
+      <div
+        style={{
+          display: "flex",
+          gap: 10,
+          alignItems: "flex-end",
+          height: 70,
+          opacity: Math.min(1, frame / 12),
+        }}
+      >
+        {bars}
+      </div>
+      <div
+        style={{
+          fontFamily: theme.mono,
+          fontSize: 30,
+          letterSpacing: "0.3em",
+          textTransform: "uppercase",
+          color: theme.textDim,
+          opacity: entrance,
+        }}
+      >
+        {props.date}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
 export const ColdOpenCard: React.FC<EpisodeProps> = (props) => {
   const opacity = useCardOpacity();
   const entrance = useEntrance();
@@ -100,16 +170,20 @@ const BulletRow: React.FC<{ text: string; revealFrame: number }> = ({
         transform: `translateX(${visible ? (1 - pop) * -50 : -50}px)`,
       }}
     >
+      {/* CSS triangle — a font glyph here rendered as tofu on Lambda's
+          Chromium, whose system fonts lack the character */}
       <span
         style={{
-          color: theme.accent,
-          fontFamily: theme.mono,
-          fontSize: 38,
-          lineHeight: 1.35,
+          display: "inline-block",
+          marginTop: 18,
+          width: 0,
+          height: 0,
+          borderTop: "14px solid transparent",
+          borderBottom: "14px solid transparent",
+          borderLeft: `22px solid ${theme.accent}`,
+          flexShrink: 0,
         }}
-      >
-        ▸
-      </span>
+      />
       <span
         style={{
           fontFamily: theme.sans,

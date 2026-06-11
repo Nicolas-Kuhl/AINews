@@ -55,6 +55,7 @@ def load_config(path: Path = CONFIG_PATH) -> dict:
     tts.setdefault("provider", "elevenlabs")
     tts.setdefault("voice", "LtPsVjX1k0Kl4StEMZPK")  # Sophia — Young Australian Female
     tts.setdefault("model", "eleven_multilingual_v2")
+    tts.setdefault("speed", 1.1)  # Sophia's natural pace runs slow for news
     tts.setdefault("polly_voice", "Olivia")  # en-AU generative (fallback)
     tts.setdefault("polly_engine", "generative")
     tts.setdefault("region", "us-east-1")

@@ -74,19 +74,21 @@ class ElevenLabsTTS:
         voice: str,
         *,
         model_id: str = DEFAULT_ELEVENLABS_MODEL,
+        speed: float = 1.0,
         http=None,
     ):
         import httpx
 
         self.api_key = api_key
         self.model_id = model_id
+        self.speed = speed
         self.http = http or httpx.Client(
             base_url=ELEVENLABS_BASE_URL,
             headers={"xi-api-key": api_key},
             timeout=180,
         )
         self.voice_id = self._resolve_voice(voice)
-        self.label = f"{voice} (elevenlabs/{model_id})"
+        self.label = f"{voice} (elevenlabs/{model_id}, speed={speed})"
 
     def _resolve_voice(self, voice: str) -> str:
         """Accept either a raw voice_id or a human voice name."""
@@ -116,10 +118,13 @@ class ElevenLabsTTS:
 
     def synthesize(self, text: str) -> "tuple[bytes, Optional[str]]":
         """Return (mp3_bytes, word_marks_jsonl). One call, always in sync."""
+        payload: dict = {"text": text, "model_id": self.model_id}
+        if self.speed and self.speed != 1.0:
+            payload["voice_settings"] = {"speed": self.speed}
         resp = self.http.post(
             f"/text-to-speech/{self.voice_id}/with-timestamps",
             params={"output_format": "mp3_44100_128"},
-            json={"text": text, "model_id": self.model_id},
+            json=payload,
         )
         resp.raise_for_status()
         data = resp.json()
@@ -236,6 +241,7 @@ def make_tts(tts_cfg: dict, *, provider: Optional[str] = None):
         return ElevenLabsTTS(
             api_key, voice,
             model_id=tts_cfg.get("model", DEFAULT_ELEVENLABS_MODEL),
+            speed=float(tts_cfg.get("speed", 1.0)),
         )
     if provider == "polly":
         return PollyTTS(

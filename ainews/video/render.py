@@ -110,6 +110,8 @@ def build_render_manifest(
     tagline: str = DEFAULT_TAGLINE,
     site_url: str = DEFAULT_SITE_URL,
     duration_fn: Optional[Callable[[Path], float]] = None,
+    intro_audio: Optional[str] = None,
+    intro_duration: float = 5.0,
 ) -> dict:
     """Build the Remotion props dict for one episode.
 
@@ -160,6 +162,16 @@ def build_render_manifest(
             f"Script has {len(segments)} segments but audio manifest only "
             f"covered {seg_idx}"
         )
+
+    if intro_audio:
+        # Musical ident before the cold open. The audio path is a site-bundled
+        # static asset (renderer/public/...), not per-episode audio.
+        sections.insert(0, {
+            "kind": "intro",
+            "key": "intro",
+            "audio": intro_audio,
+            "durationSeconds": intro_duration,
+        })
 
     return {
         "date": date,

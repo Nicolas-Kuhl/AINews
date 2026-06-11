@@ -6,7 +6,7 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
-import { ColdOpenCard, SegmentCard, SignOffCard } from "./cards";
+import { ColdOpenCard, IntroCard, SegmentCard, SignOffCard } from "./cards";
 import { Backdrop } from "./Backdrop";
 import { theme } from "./theme";
 import { EpisodeProps, SECTION_GAP_SECONDS } from "./types";
@@ -34,7 +34,9 @@ export const Episode: React.FC<EpisodeProps> = (props) => {
           return (
             <Series.Sequence key={section.key} durationInFrames={frames}>
               {audioSrc ? <Audio src={audioSrc} /> : null}
-              {section.kind === "cold_open" ? (
+              {section.kind === "intro" ? (
+                <IntroCard {...props} />
+              ) : section.kind === "cold_open" ? (
                 <ColdOpenCard {...props} />
               ) : section.kind === "sign_off" ? (
                 <SignOffCard {...props} />

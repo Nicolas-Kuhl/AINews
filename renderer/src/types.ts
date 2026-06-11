@@ -1,4 +1,4 @@
-export type SectionKind = "cold_open" | "segment" | "sign_off";
+export type SectionKind = "intro" | "cold_open" | "segment" | "sign_off";
 
 export type Bullet = {
   text: string;
