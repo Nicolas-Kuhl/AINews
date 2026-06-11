@@ -38,6 +38,15 @@ def load_config(path: Path = CONFIG_PATH) -> dict:
     cfg.setdefault("trusted_interval", 15)
     cfg.setdefault("open_interval", 1440)
 
+    # Video script (Stage 1 of the daily video pipeline) defaults
+    vs = cfg.setdefault("video_script", {})
+    vs.setdefault("hours", 24)
+    vs.setdefault("min_score", 6)
+    vs.setdefault("max_stories", 7)
+    vs.setdefault("target_minutes", 5)
+    vs.setdefault("words_per_minute", 155)
+    vs.setdefault("show_name", "The Daily Prompt")
+
     # Newsletter defaults
     nl = cfg.setdefault("newsletters", {"enabled": False, "senders": []})
     nl.setdefault("enabled", False)
