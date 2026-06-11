@@ -185,12 +185,21 @@ class GenerateScriptTests(unittest.TestCase):
 
         self.assertEqual(script["title"], "Robots Did Things Again")
 
-    def test_wrong_segment_count_raises(self) -> None:
-        draft = _script_response(2, words_per_section=155)  # 2 segments for 3 stories
+    def test_merged_duplicate_segment_accepted(self) -> None:
+        # 6 segments for 7 stories: the model merged duplicate coverage — fine
+        draft = _script_response(6, words_per_section=110)
+        client = _StubClient([json.dumps(draft)])
+
+        script = generate_script(client, self._stories(7), target_minutes=5)
+
+        self.assertEqual(len(script["segments"]), 6)
+
+    def test_too_few_segments_raises(self) -> None:
+        draft = _script_response(2, words_per_section=155)  # 2 segments for 6 stories
         client = _StubClient([json.dumps(draft)])
 
         with self.assertRaises(ValueError):
-            generate_script(client, self._stories(3), target_minutes=5)
+            generate_script(client, self._stories(6), target_minutes=5)
 
     def test_empty_stories_raises(self) -> None:
         with self.assertRaises(ValueError):

@@ -91,6 +91,8 @@ Episode structure — respond with VALID JSON ONLY, exactly this shape:
 Hard requirements:
 - Exactly {n_stories} segments, in the order that makes the best SHOW (you may
   reorder; lead with your strongest material, end on the second-strongest).
+  Exception: if two story notes are clearly duplicate coverage of the SAME
+  news, merge them into one segment (cite the stronger source).
 - Total narration (cold_open + all segment narration + sign_off) must be
   {target_words} words, within about 10%. Count as you go.
 - Every segment's "source" and "url" must be copied verbatim from its story
@@ -166,9 +168,12 @@ def _validate_script(script: dict, n_stories: int) -> None:
         if not script.get(key):
             raise ValueError(f"Script missing required field: {key}")
     segments = script["segments"]
-    if not isinstance(segments, list) or len(segments) != n_stories:
+    # The model may merge up to two pairs of duplicate-coverage stories into
+    # single segments — fewer than that means stories were dropped.
+    min_segments = max(1, n_stories - 2)
+    if not isinstance(segments, list) or not (min_segments <= len(segments) <= n_stories):
         raise ValueError(
-            f"Expected {n_stories} segments, got "
+            f"Expected {min_segments}-{n_stories} segments, got "
             f"{len(segments) if isinstance(segments, list) else type(segments).__name__}"
         )
     for i, seg in enumerate(segments):
