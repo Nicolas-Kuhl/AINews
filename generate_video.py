@@ -27,6 +27,43 @@ PROJECT_ROOT = Path(__file__).parent
 RENDERER_DIR = PROJECT_ROOT / "renderer"
 
 
+def _instance_role_env() -> dict:
+    """Fetch the EC2 instance role's temporary credentials as env vars.
+
+    The Remotion Lambda SDK requires explicit AWS_* env vars and won't use
+    the instance-role chain itself. Returns {} off-EC2 (local dev relies on
+    the ambient environment instead).
+    """
+    import urllib.request
+
+    imds = "http://169.254.169.254/latest"
+    try:
+        token = urllib.request.urlopen(
+            urllib.request.Request(
+                f"{imds}/api/token", method="PUT",
+                headers={"X-aws-ec2-metadata-token-ttl-seconds": "900"},
+            ), timeout=2,
+        ).read().decode()
+        headers = {"X-aws-ec2-metadata-token": token}
+        role = urllib.request.urlopen(
+            urllib.request.Request(
+                f"{imds}/meta-data/iam/security-credentials/", headers=headers,
+            ), timeout=2,
+        ).read().decode().strip()
+        creds = json.loads(urllib.request.urlopen(
+            urllib.request.Request(
+                f"{imds}/meta-data/iam/security-credentials/{role}", headers=headers,
+            ), timeout=2,
+        ).read())
+        return {
+            "AWS_ACCESS_KEY_ID": creds["AccessKeyId"],
+            "AWS_SECRET_ACCESS_KEY": creds["SecretAccessKey"],
+            "AWS_SESSION_TOKEN": creds["Token"],
+        }
+    except Exception:
+        return {}
+
+
 def _stage_audio_on_s3(manifest: dict, audio_dir: Path, date: str, video_cfg: dict) -> dict:
     """Upload episode audio to S3 and swap props audio paths for presigned URLs."""
     import boto3
@@ -142,7 +179,16 @@ def main():
 
     out.parent.mkdir(parents=True, exist_ok=True)
     print(f"Rendering -> {out}")
-    result = subprocess.run(cmd, cwd=RENDERER_DIR)
+    env = None
+    if use_lambda:
+        import os
+
+        env = {
+            **os.environ,
+            **_instance_role_env(),
+            "AWS_REGION": video_cfg.get("lambda_region", "us-east-1"),
+        }
+    result = subprocess.run(cmd, cwd=RENDERER_DIR, env=env)
     if result.returncode != 0:
         print("ERROR: Remotion render failed")
         sys.exit(result.returncode)
