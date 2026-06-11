@@ -15,6 +15,25 @@ logger = logging.getLogger(__name__)
 _NUMERIC_MARKER_RE = re.compile(r"\d+(?:\.\d+)*")
 
 
+def parse_first_json_array(text: str) -> list:
+    """Parse the first complete JSON array in ``text``, tolerating prose around it.
+
+    The semantic-dedup models occasionally preface their answer with analysis
+    despite "JSON only" instructions. A greedy first-``[``-to-last-``]`` regex
+    then spans the prose and fails to parse. Instead, attempt a real JSON parse
+    at every ``[`` until one succeeds.
+    """
+    decoder = json.JSONDecoder()
+    for match in re.finditer(r"\[", text):
+        try:
+            value, _end = decoder.raw_decode(text, match.start())
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, list):
+            return value
+    raise ValueError(f"no JSON array found in response (head: {text[:80]!r})")
+
+
 def normalize_url(url: str) -> str:
     """Normalize a URL for comparison: lowercase host, strip tracking params, trailing slashes."""
     try:
@@ -170,9 +189,10 @@ def semantic_dedup(
     response = client.messages.create(
         model=model,
         max_tokens=1024,
-        messages=[{
-            "role": "user",
-            "content": f"""You are a news deduplication assistant. For each pair below, determine if headline A is about the same specific news story/event as headline B.
+        messages=[
+            {
+                "role": "user",
+                "content": f"""You are a news deduplication assistant. For each pair below, determine if headline A is about the same specific news story/event as headline B.
 
 Answer ONLY with a JSON array of pair numbers that ARE about the same story. If none match, return an empty array [].
 
@@ -181,15 +201,18 @@ Be strict: two articles must be about the same specific event or announcement to
 {pairs_text}
 
 Return ONLY a JSON array, e.g. [1, 3] or []. No other text.""",
-        }],
+            },
+            # Prefill anchors the reply as a JSON array, suppressing preamble prose.
+            {"role": "assistant", "content": "["},
+        ],
     )
 
-    # Parse Claude's response
-    response_text = response.content[0].text.strip()
+    # Parse Claude's response (re-attach the prefilled bracket)
+    response_text = "[" + response.content[0].text.strip()
     try:
-        match_indices = json.loads(response_text)
-    except json.JSONDecodeError:
-        logger.warning(f"Semantic dedup: could not parse response: {response_text}")
+        match_indices = parse_first_json_array(response_text)
+    except ValueError:
+        logger.warning(f"Semantic dedup: could not parse response: {response_text[:200]}")
         return []
 
     if not match_indices:
@@ -198,7 +221,7 @@ Return ONLY a JSON array, e.g. [1, 3] or []. No other text.""",
     # Return the confirmed same-story pairs
     confirmed: list[tuple[str, str]] = []
     for idx in match_indices:
-        if 1 <= idx <= len(borderline_pairs):
+        if isinstance(idx, int) and 1 <= idx <= len(borderline_pairs):
             confirmed.append(borderline_pairs[idx - 1])
 
     if confirmed:

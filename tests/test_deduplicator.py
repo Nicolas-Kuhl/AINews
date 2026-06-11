@@ -67,3 +67,47 @@ class DeduplicatorVersionGuardTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ParseFirstJsonArrayTests(unittest.TestCase):
+    """Robust parsing of model responses that should be a bare JSON array."""
+
+    def test_plain_array(self):
+        from ainews.processing.deduplicator import parse_first_json_array
+        self.assertEqual(parse_first_json_array("[1, 3, 7]"), [1, 3, 7])
+
+    def test_empty_array(self):
+        from ainews.processing.deduplicator import parse_first_json_array
+        self.assertEqual(parse_first_json_array("[]"), [])
+
+    def test_prose_before_array(self):
+        from ainews.processing.deduplicator import parse_first_json_array
+        text = (
+            "Looking at each pair, I need to identify articles about the same "
+            "specific event.\n\nLet me analyze them.\n\n[2, 5]"
+        )
+        self.assertEqual(parse_first_json_array(text), [2, 5])
+
+    def test_bracket_noise_in_prose_before_real_array(self):
+        from ainews.processing.deduplicator import parse_first_json_array
+        # The old greedy regex spanned from the first '[' to the last ']' and
+        # failed; the decoder-based parse skips the non-JSON bracket.
+        text = "Pairs [like these] need care.\nAnswer: [1, 4]"
+        self.assertEqual(parse_first_json_array(text), [1, 4])
+
+    def test_cluster_of_clusters(self):
+        from ainews.processing.deduplicator import parse_first_json_array
+        self.assertEqual(parse_first_json_array("[[1, 2], [3]]"), [[1, 2], [3]])
+
+    def test_fenced_array(self):
+        from ainews.processing.deduplicator import parse_first_json_array
+        self.assertEqual(parse_first_json_array("```json\n[9]\n```"), [9])
+
+    def test_trailing_prose_after_array(self):
+        from ainews.processing.deduplicator import parse_first_json_array
+        self.assertEqual(parse_first_json_array("[6]\n\nThese match because..."), [6])
+
+    def test_no_array_raises(self):
+        from ainews.processing.deduplicator import parse_first_json_array
+        with self.assertRaises(ValueError):
+            parse_first_json_array("I could not find any matching pairs.")
