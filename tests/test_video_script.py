@@ -278,13 +278,48 @@ class StorySelectionWindowTests(unittest.TestCase):
 
         self.assertEqual([p.title for p, _ in stories], ["Fresh story"])
 
-    def test_wide_lookback_catches_older_big_story(self):
+    def test_catchup_fills_empty_slots_on_quiet_days(self):
         self.db.insert(_item("Two days ago banger", score=9, hours_ago=50))
         self.db.insert(_item("Today's medium story", score=6, hours_ago=2))
 
-        stories = select_stories(self.db, hours=72, min_score=6, max_stories=5)
+        stories = select_stories(self.db, hours=24, catchup_hours=72,
+                                 min_score=6, max_stories=5)
 
-        self.assertEqual(stories[0][0].title, "Two days ago banger")
+        titles = [p.title for p, _ in stories]
+        self.assertIn("Two days ago banger", titles)
+        self.assertIn("Today's medium story", titles)
+
+    def test_old_eight_never_displaces_fresh_stories_when_full(self):
+        for i in range(5):
+            self.db.insert(_item(f"Fresh {i}", score=6, hours_ago=2))
+        self.db.insert(_item("Old eight", score=8, hours_ago=50))
+
+        stories = select_stories(self.db, hours=24, catchup_hours=72,
+                                 min_score=6, max_stories=5)
+
+        titles = [p.title for p, _ in stories]
+        self.assertNotIn("Old eight", titles)
+        self.assertEqual(len(titles), 5)
+
+    def test_old_nine_bumps_weakest_fresh_story_when_full(self):
+        for i in range(5):
+            self.db.insert(_item(f"Fresh {i}", score=6, hours_ago=2))
+        self.db.insert(_item("Missed banger", score=9, hours_ago=50))
+
+        stories = select_stories(self.db, hours=24, catchup_hours=72,
+                                 min_score=6, max_stories=5)
+
+        titles = [p.title for p, _ in stories]
+        self.assertIn("Missed banger", titles)
+        self.assertEqual(len(titles), 5)
+
+    def test_old_story_below_catchup_threshold_ignored(self):
+        self.db.insert(_item("Old mediocre", score=7, hours_ago=50))
+
+        stories = select_stories(self.db, hours=24, catchup_hours=72,
+                                 catchup_min_score=8, min_score=6, max_stories=5)
+
+        self.assertEqual(stories, [])
 
     def test_on_date_selects_exact_calendar_day(self):
         from datetime import datetime, timezone

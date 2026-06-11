@@ -40,7 +40,9 @@ def load_config(path: Path = CONFIG_PATH) -> dict:
 
     # Video script (Stage 1 of the daily video pipeline) defaults
     vs = cfg.setdefault("video_script", {})
-    vs.setdefault("hours", 72)  # wide lookback; previously-covered stories are excluded
+    vs.setdefault("hours", 24)            # fresh-news window, fills first
+    vs.setdefault("catchup_hours", 72)    # older uncovered stories may fill gaps...
+    vs.setdefault("catchup_min_score", 8) # ...if they scored at least this
     vs.setdefault("min_score", 6)
     vs.setdefault("max_stories", 7)
     vs.setdefault("target_minutes", 5)

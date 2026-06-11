@@ -205,34 +205,14 @@ def previously_covered_urls(scripts_dir: Path, days: int = 14) -> "set[str]":
     return covered
 
 
-def select_stories(
+def _query_window(
     db: Database,
     *,
-    hours: int = 72,
-    min_score: int = 6,
-    max_stories: int = 7,
-    now: Optional[datetime] = None,
-    on_date: Optional[str] = None,
-    exclude_urls: "Optional[set[str]]" = None,
+    start: datetime,
+    end: Optional[datetime],
+    min_score: int,
+    exclude_urls: "set[str]",
 ) -> list:
-    """Pick the top story groups as (primary, [related]) pairs.
-
-    Default window is a 72h lookback — wide enough that a major story
-    published just before yesterday's episode cutoff still gets picked up —
-    combined with ``exclude_urls`` (stories covered by earlier episodes) so
-    nothing repeats. ``on_date`` switches to an exact UTC calendar day
-    instead, for regenerating a specific date's episode.
-
-    Includes acknowledged items — a story the user already triaged is still
-    news to the video audience.
-    """
-    if on_date:
-        start = datetime.fromisoformat(on_date).replace(tzinfo=timezone.utc)
-        end: Optional[datetime] = start + timedelta(days=1)
-    else:
-        now = now or datetime.now(timezone.utc)
-        start = now - timedelta(hours=hours)
-        end = None
     pairs = db.query_grouped(
         min_score=min_score,
         start_date=start,
@@ -242,13 +222,78 @@ def select_stories(
         sort_dir="DESC",
         limit=100,
     )
-    if exclude_urls:
-        pairs = [
-            (primary, related) for primary, related in pairs
-            if primary.url not in exclude_urls
-            and not any(r.url in exclude_urls for r in related)
-        ]
-    return pairs[:max_stories]
+    return [
+        (primary, related) for primary, related in pairs
+        if primary.url not in exclude_urls
+        and not any(r.url in exclude_urls for r in related)
+    ]
+
+
+def select_stories(
+    db: Database,
+    *,
+    hours: int = 24,
+    catchup_hours: int = 72,
+    catchup_min_score: int = 8,
+    min_score: int = 6,
+    max_stories: int = 7,
+    now: Optional[datetime] = None,
+    on_date: Optional[str] = None,
+    exclude_urls: "Optional[set[str]]" = None,
+) -> list:
+    """Pick the top story groups as (primary, [related]) pairs.
+
+    Editorial rules:
+    - Fresh stories (last ``hours``) fill the episode first, by score —
+      today's news always has priority.
+    - Older stories (``hours``..``catchup_hours``, not yet covered by a
+      previous episode) only fill leftover slots on quiet days, and must
+      score >= ``catchup_min_score``.
+    - Exception: a 9+ catch-up may bump a strictly lower-scored fresh story,
+      so a major story that missed yesterday's cutoff still gets covered
+      without letting routine older items displace today's news.
+
+    ``on_date`` switches to an exact UTC calendar day (regeneration).
+    ``exclude_urls`` (stories covered by earlier episodes) ensures nothing
+    repeats. Includes acknowledged items — a story the user already triaged
+    is still news to the video audience.
+    """
+    exclude_urls = exclude_urls or set()
+
+    if on_date:
+        start = datetime.fromisoformat(on_date).replace(tzinfo=timezone.utc)
+        pairs = _query_window(
+            db, start=start, end=start + timedelta(days=1),
+            min_score=min_score, exclude_urls=exclude_urls,
+        )
+        return pairs[:max_stories]
+
+    now = now or datetime.now(timezone.utc)
+    fresh_start = now - timedelta(hours=hours)
+    selected = _query_window(
+        db, start=fresh_start, end=None,
+        min_score=min_score, exclude_urls=exclude_urls,
+    )[:max_stories]
+
+    if catchup_hours > hours:
+        catchups = _query_window(
+            db, start=now - timedelta(hours=catchup_hours), end=fresh_start,
+            min_score=catchup_min_score, exclude_urls=exclude_urls,
+        )
+        for pair in catchups:
+            if len(selected) < max_stories:
+                selected.append(pair)
+                continue
+            # Episode is full: only a 9+ may displace, and only a strictly
+            # weaker fresh story.
+            if pair[0].score < 9:
+                continue
+            weakest = min(range(len(selected)), key=lambda i: selected[i][0].score)
+            if selected[weakest][0].score < pair[0].score:
+                selected[weakest] = pair
+
+    selected.sort(key=lambda p: p[0].score, reverse=True)
+    return selected
 
 
 def generate_script(
@@ -386,7 +431,9 @@ def run_video_script(
     client: anthropic.Anthropic,
     *,
     output_dir: Path,
-    hours: int = 72,
+    hours: int = 24,
+    catchup_hours: int = 72,
+    catchup_min_score: int = 8,
     min_score: int = 6,
     max_stories: int = 7,
     target_minutes: float = 5.0,
@@ -407,7 +454,9 @@ def run_video_script(
     if exclude_urls:
         log.info("Video script: excluding %d previously covered stories", len(exclude_urls))
     stories = select_stories(
-        db, hours=hours, min_score=min_score, max_stories=max_stories,
+        db, hours=hours, catchup_hours=catchup_hours,
+        catchup_min_score=catchup_min_score,
+        min_score=min_score, max_stories=max_stories,
         on_date=on_date, exclude_urls=exclude_urls,
     )
     if not stories:

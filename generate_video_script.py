@@ -61,7 +61,9 @@ def main():
         result = run_video_script(
             db, client,
             output_dir=output_dir,
-            hours=args.hours or vs_cfg.get("hours", 72),
+            hours=args.hours or vs_cfg.get("hours", 24),
+            catchup_hours=vs_cfg.get("catchup_hours", 72),
+            catchup_min_score=vs_cfg.get("catchup_min_score", 8),
             min_score=args.min_score or vs_cfg.get("min_score", 6),
             max_stories=args.max_stories or vs_cfg.get("max_stories", 7),
             target_minutes=args.minutes or vs_cfg.get("target_minutes", 5),
