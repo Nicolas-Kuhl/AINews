@@ -47,12 +47,19 @@ def load_config(path: Path = CONFIG_PATH) -> dict:
     vs.setdefault("words_per_minute", 155)
     vs.setdefault("show_name", "The Daily Prompt")
 
-    # TTS (Stage 2 of the daily video pipeline) defaults — Amazon Polly via
-    # instance-role credentials; us-east-1 has all engines/voices.
+    # TTS (Stage 2 of the daily video pipeline) defaults.
+    # Provider "elevenlabs" needs ELEVENLABS_API_KEY in the environment and
+    # tts.voice set to a voice name/id from the account; falls back to
+    # Amazon Polly (instance-role credentials) when no key is present.
     tts = cfg.setdefault("tts", {})
-    tts.setdefault("voice", "Olivia")  # en-AU generative
-    tts.setdefault("engine", "generative")
+    tts.setdefault("provider", "elevenlabs")
+    tts.setdefault("model", "eleven_multilingual_v2")
+    tts.setdefault("polly_voice", "Olivia")  # en-AU generative (fallback)
+    tts.setdefault("polly_engine", "generative")
     tts.setdefault("region", "us-east-1")
+    env_el_key = os.environ.get("ELEVENLABS_API_KEY")
+    if env_el_key:
+        tts["api_key"] = env_el_key
 
     # Newsletter defaults
     nl = cfg.setdefault("newsletters", {"enabled": False, "senders": []})

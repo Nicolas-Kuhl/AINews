@@ -2,47 +2,54 @@
 
 Stage 2 of the daily video pipeline. Takes the script JSON produced by
 ``ainews.processing.video_script`` and synthesizes one MP3 per narration
-section (cold open, each segment, sign-off) with Amazon Polly, using the
-EC2 instance role for credentials — no API keys on disk.
+section (cold open, each segment, sign-off), plus word-level timing marks
+that drive synced captions in Stage 3.
+
+Two providers behind one interface:
+
+- **ElevenLabs** (default) — the show voice. Uses the ``with-timestamps``
+  endpoint so audio and word marks come from a single call and always
+  agree. Needs ``ELEVENLABS_API_KEY`` in the environment (or
+  ``tts.api_key`` in config — prefer the env var; the server's ``.env``
+  is the right home).
+- **Amazon Polly** — fallback / no-key option using the EC2 instance
+  role. Polly's generative engine does not support speech marks, so
+  sections may ship without marks.
 
 Per-section files (rather than one long take) give the renderer exact
-durations for timing the visuals. Alongside each MP3 the module requests
-word-level *speech marks* — timestamps for every spoken word — which drive
-synced on-screen captions in Stage 3. Not every Polly engine supports
-speech marks; when the request fails the section simply ships without
-marks and the renderer falls back to unsynced text.
-
-Everything is written to ``<output_dir>/<episode-date>/`` plus a
-``manifest.json`` describing the sections in playback order.
+durations for timing the visuals. Everything is written to
+``<output_dir>/<episode-date>/`` plus a ``manifest.json`` describing the
+sections in playback order — the marks format is Polly-style JSONL
+(``{"time": ms, "type": "word", "value": ...}``) regardless of provider.
 """
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_VOICE = "Olivia"  # en-AU generative — the show's host voice
-DEFAULT_ENGINE = "generative"
-# Generative and long-form engines have limited regional availability;
-# us-east-1 has every engine and voice. TTS is offline work — cross-region
-# latency is irrelevant.
-DEFAULT_REGION = "us-east-1"
+DEFAULT_PROVIDER = "elevenlabs"
 
-# Sampler candidates: (voice, engine) pairs worth auditioning for a daily
-# news show. All available in us-east-1.
-VOICE_CANDIDATES = [
+# --- ElevenLabs defaults ---------------------------------------------------
+DEFAULT_ELEVENLABS_MODEL = "eleven_multilingual_v2"
+ELEVENLABS_BASE_URL = "https://api.elevenlabs.io/v1"
+
+# --- Polly defaults (fallback provider) ------------------------------------
+DEFAULT_POLLY_VOICE = "Olivia"  # en-AU generative
+DEFAULT_POLLY_ENGINE = "generative"
+DEFAULT_POLLY_REGION = "us-east-1"
+
+POLLY_VOICE_CANDIDATES = [
+    ("Olivia", "generative"),
     ("Ruth", "generative"),
     ("Matthew", "generative"),
-    ("Stephen", "generative"),
-    ("Amy", "generative"),      # en-GB
     ("Danielle", "long-form"),
-    ("Gregory", "long-form"),
-    ("Matthew", "neural"),
-    ("Joanna", "neural"),
 ]
 
 SAMPLE_TEXT = (
@@ -54,12 +61,194 @@ SAMPLE_TEXT = (
 )
 
 
-def make_polly_client(region: str = DEFAULT_REGION):
-    """Build a boto3 Polly client (imported lazily so tests need no boto3)."""
+# ---------------------------------------------------------------------------
+# Providers
+# ---------------------------------------------------------------------------
+
+class ElevenLabsTTS:
+    """ElevenLabs text-to-speech with word-level timestamps."""
+
+    def __init__(
+        self,
+        api_key: str,
+        voice: str,
+        *,
+        model_id: str = DEFAULT_ELEVENLABS_MODEL,
+        http=None,
+    ):
+        import httpx
+
+        self.api_key = api_key
+        self.model_id = model_id
+        self.http = http or httpx.Client(
+            base_url=ELEVENLABS_BASE_URL,
+            headers={"xi-api-key": api_key},
+            timeout=180,
+        )
+        self.voice_id = self._resolve_voice(voice)
+        self.label = f"{voice} (elevenlabs/{model_id})"
+
+    def _resolve_voice(self, voice: str) -> str:
+        """Accept either a raw voice_id or a human voice name."""
+        # Voice IDs are 20+ char alphanumeric tokens with no spaces;
+        # anything else is treated as a name to look up.
+        if len(voice) >= 20 and voice.isalnum():
+            return voice
+        for v in self.list_voices():
+            if v["name"].lower() == voice.lower():
+                return v["voice_id"]
+        raise ValueError(
+            f"ElevenLabs voice {voice!r} not found in this account. "
+            f"Run generate_voiceover.py --sample to list and audition voices."
+        )
+
+    def list_voices(self) -> "list[dict]":
+        resp = self.http.get("/voices")
+        resp.raise_for_status()
+        return [
+            {
+                "voice_id": v["voice_id"],
+                "name": v["name"],
+                "labels": v.get("labels") or {},
+            }
+            for v in resp.json().get("voices", [])
+        ]
+
+    def synthesize(self, text: str) -> "tuple[bytes, Optional[str]]":
+        """Return (mp3_bytes, word_marks_jsonl). One call, always in sync."""
+        resp = self.http.post(
+            f"/text-to-speech/{self.voice_id}/with-timestamps",
+            params={"output_format": "mp3_44100_128"},
+            json={"text": text, "model_id": self.model_id},
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        audio = base64.b64decode(data["audio_base64"])
+        marks = _alignment_to_word_marks(data.get("alignment"))
+        return audio, marks
+
+
+class PollyTTS:
+    """Amazon Polly fallback using instance-role credentials."""
+
+    def __init__(
+        self,
+        *,
+        voice: str = DEFAULT_POLLY_VOICE,
+        engine: str = DEFAULT_POLLY_ENGINE,
+        region: str = DEFAULT_POLLY_REGION,
+        client=None,
+    ):
+        self.voice = voice
+        self.engine = engine
+        self.client = client or _make_polly_client(region)
+        self.label = f"{voice} (polly/{engine})"
+
+    def synthesize(self, text: str) -> "tuple[bytes, Optional[str]]":
+        resp = self.client.synthesize_speech(
+            Engine=self.engine, VoiceId=self.voice,
+            OutputFormat="mp3", Text=text, TextType="text",
+        )
+        audio = resp["AudioStream"].read()
+        marks = None
+        try:
+            marks_resp = self.client.synthesize_speech(
+                Engine=self.engine, VoiceId=self.voice,
+                OutputFormat="json", SpeechMarkTypes=["word"],
+                Text=text, TextType="text",
+            )
+            marks = marks_resp["AudioStream"].read().decode("utf-8")
+        except Exception as exc:  # noqa: BLE001 — marks are an enhancement
+            logger.warning("Polly speech marks unavailable (engine=%s): %s",
+                           self.engine, exc)
+        return audio, marks
+
+
+def _make_polly_client(region: str):
     import boto3
 
     return boto3.client("polly", region_name=region)
 
+
+def _alignment_to_word_marks(alignment: Optional[dict]) -> Optional[str]:
+    """Convert ElevenLabs character alignment to Polly-style word marks JSONL.
+
+    The renderer consumes one format regardless of provider:
+    ``{"time": <ms>, "type": "word", "value": <word>}`` per line, plus a
+    final ``{"time": <ms>, "type": "end"}`` carrying the audio end time
+    (ElevenLabs gives exact end times; use them for duration).
+    """
+    if not alignment:
+        return None
+    chars = alignment.get("characters") or []
+    starts = alignment.get("character_start_times_seconds") or []
+    ends = alignment.get("character_end_times_seconds") or []
+    if not chars or len(chars) != len(starts):
+        return None
+
+    lines = []
+    word = ""
+    word_start = 0.0
+    for i, ch in enumerate(chars):
+        if ch.isspace():
+            if word:
+                lines.append(json.dumps(
+                    {"time": int(word_start * 1000), "type": "word", "value": word}
+                ))
+                word = ""
+        else:
+            if not word:
+                word_start = starts[i]
+            word += ch
+    if word:
+        lines.append(json.dumps(
+            {"time": int(word_start * 1000), "type": "word", "value": word}
+        ))
+    if ends:
+        lines.append(json.dumps({"time": int(ends[-1] * 1000), "type": "end"}))
+    return "\n".join(lines)
+
+
+def make_tts(tts_cfg: dict, *, provider: Optional[str] = None):
+    """Build the configured TTS provider; fall back to Polly without a key."""
+    provider = provider or tts_cfg.get("provider", DEFAULT_PROVIDER)
+    if provider == "elevenlabs":
+        api_key = (
+            os.environ.get("ELEVENLABS_API_KEY")
+            or tts_cfg.get("api_key")
+        )
+        if not api_key:
+            logger.warning(
+                "No ELEVENLABS_API_KEY found — falling back to Amazon Polly. "
+                "Add the key to the server's .env to use the ElevenLabs voice."
+            )
+            return PollyTTS(
+                voice=tts_cfg.get("polly_voice", DEFAULT_POLLY_VOICE),
+                engine=tts_cfg.get("polly_engine", DEFAULT_POLLY_ENGINE),
+                region=tts_cfg.get("region", DEFAULT_POLLY_REGION),
+            )
+        voice = tts_cfg.get("voice")
+        if not voice:
+            raise ValueError(
+                "tts.voice is not set. Run generate_voiceover.py --sample to "
+                "audition the account's voices, then set tts.voice in config.yaml."
+            )
+        return ElevenLabsTTS(
+            api_key, voice,
+            model_id=tts_cfg.get("model", DEFAULT_ELEVENLABS_MODEL),
+        )
+    if provider == "polly":
+        return PollyTTS(
+            voice=tts_cfg.get("polly_voice", tts_cfg.get("voice", DEFAULT_POLLY_VOICE)),
+            engine=tts_cfg.get("polly_engine", tts_cfg.get("engine", DEFAULT_POLLY_ENGINE)),
+            region=tts_cfg.get("region", DEFAULT_POLLY_REGION),
+        )
+    raise ValueError(f"Unknown TTS provider: {provider!r}")
+
+
+# ---------------------------------------------------------------------------
+# Episode synthesis (provider-agnostic)
+# ---------------------------------------------------------------------------
 
 def iter_sections(script: dict) -> "list[tuple[str, str]]":
     """Flatten a script into ordered (section_key, narration_text) pairs."""
@@ -72,112 +261,70 @@ def iter_sections(script: dict) -> "list[tuple[str, str]]":
 
 
 def _marks_duration_seconds(marks_jsonl: str) -> Optional[float]:
-    """Approximate audio duration from the last speech mark (+ breath pad)."""
+    """Audio duration from the marks: exact "end" mark if present, else the
+    last word time plus a breath pad."""
     last_ms = None
+    end_ms = None
     for line in marks_jsonl.strip().splitlines():
         try:
             mark = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if isinstance(mark.get("time"), (int, float)):
+        if not isinstance(mark.get("time"), (int, float)):
+            continue
+        if mark.get("type") == "end":
+            end_ms = mark["time"]
+        else:
             last_ms = mark["time"]
-    if last_ms is None:
-        return None
-    return round(last_ms / 1000 + 0.4, 2)
-
-
-def synthesize_section(
-    polly,
-    text: str,
-    *,
-    voice: str,
-    engine: str,
-    audio_path: Path,
-    marks_path: Path,
-) -> dict:
-    """Synthesize one narration section: MP3 plus (best-effort) word marks.
-
-    Returns a manifest entry. Raises on audio-synthesis failure — an episode
-    with a missing section is not shippable — but missing speech marks only
-    log a warning.
-    """
-    response = polly.synthesize_speech(
-        Engine=engine,
-        VoiceId=voice,
-        OutputFormat="mp3",
-        Text=text,
-        TextType="text",
-    )
-    audio_path.write_bytes(response["AudioStream"].read())
-
-    marks_file = None
-    duration = None
-    try:
-        marks_response = polly.synthesize_speech(
-            Engine=engine,
-            VoiceId=voice,
-            OutputFormat="json",
-            SpeechMarkTypes=["word"],
-            Text=text,
-            TextType="text",
-        )
-        marks_jsonl = marks_response["AudioStream"].read().decode("utf-8")
-        marks_path.write_text(marks_jsonl, encoding="utf-8")
-        marks_file = marks_path.name
-        duration = _marks_duration_seconds(marks_jsonl)
-    except Exception as exc:  # noqa: BLE001 — marks are an enhancement, not a requirement
-        logger.warning(
-            "Speech marks unavailable for %s (engine=%s): %s — captions will be unsynced",
-            audio_path.name, engine, exc,
-        )
-
-    return {
-        "audio": audio_path.name,
-        "marks": marks_file,
-        "duration_seconds": duration,
-        "characters": len(text),
-    }
+    if end_ms is not None:
+        return round(end_ms / 1000, 2)
+    if last_ms is not None:
+        return round(last_ms / 1000 + 0.4, 2)
+    return None
 
 
 def synthesize_script(
     script: dict,
     output_dir: Path,
     *,
-    voice: str = DEFAULT_VOICE,
-    engine: str = DEFAULT_ENGINE,
-    region: str = DEFAULT_REGION,
-    polly=None,
+    tts,
     logger_: Optional[logging.Logger] = None,
 ) -> dict:
-    """Synthesize every section of an episode script.
+    """Synthesize every section of an episode script with the given provider.
 
     Writes ``<key>.mp3`` / ``<key>.marks.jsonl`` per section plus a
     ``manifest.json``, and returns the manifest dict.
     """
     log = logger_ or logger
-    polly = polly or make_polly_client(region)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     entries = []
     total_chars = 0
     for key, text in iter_sections(script):
-        entry = synthesize_section(
-            polly, text,
-            voice=voice, engine=engine,
-            audio_path=output_dir / f"{key}.mp3",
-            marks_path=output_dir / f"{key}.marks.jsonl",
-        )
-        entry["key"] = key
-        entries.append(entry)
-        total_chars += entry["characters"]
-        log.info("  [TTS] %s — %s chars, %.1fs", key, entry["characters"],
-                 entry["duration_seconds"] or -1)
+        audio, marks = tts.synthesize(text)
+        audio_path = output_dir / f"{key}.mp3"
+        audio_path.write_bytes(audio)
+        marks_file = None
+        duration = None
+        if marks:
+            marks_path = output_dir / f"{key}.marks.jsonl"
+            marks_path.write_text(marks, encoding="utf-8")
+            marks_file = marks_path.name
+            duration = _marks_duration_seconds(marks)
+        entries.append({
+            "key": key,
+            "audio": audio_path.name,
+            "marks": marks_file,
+            "duration_seconds": duration,
+            "characters": len(text),
+        })
+        total_chars += len(text)
+        log.info("  [TTS] %s — %s chars, %.1fs", key, len(text), duration or -1)
 
     known = [e["duration_seconds"] for e in entries if e["duration_seconds"]]
     manifest = {
         "title": script.get("title", ""),
-        "voice": voice,
-        "engine": engine,
+        "voice": tts.label,
         "sections": entries,
         "total_characters": total_chars,
         "total_duration_seconds": round(sum(known), 1) if len(known) == len(entries) else None,
@@ -193,26 +340,21 @@ def synthesize_script(
 
 def synthesize_samples(
     output_dir: Path,
+    providers: "list",
     *,
     text: str = SAMPLE_TEXT,
-    candidates: "Optional[list[tuple[str, str]]]" = None,
-    region: str = DEFAULT_REGION,
-    polly=None,
 ) -> "list[Path]":
-    """Render the same paragraph in several voices so a human can pick one."""
-    polly = polly or make_polly_client(region)
+    """Render the same paragraph with each provider so a human can pick."""
     output_dir.mkdir(parents=True, exist_ok=True)
     written = []
-    for voice, engine in candidates or VOICE_CANDIDATES:
-        path = output_dir / f"sample-{engine}-{voice}.mp3"
+    for tts in providers:
+        safe = tts.label.replace("/", "-").replace(" ", "").replace("(", "-").replace(")", "")
+        path = output_dir / f"sample-{safe}.mp3"
         try:
-            response = polly.synthesize_speech(
-                Engine=engine, VoiceId=voice, OutputFormat="mp3",
-                Text=text, TextType="text",
-            )
-            path.write_bytes(response["AudioStream"].read())
+            audio, _marks = tts.synthesize(text)
+            path.write_bytes(audio)
             written.append(path)
             logger.info("  [TTS] sample written: %s", path.name)
         except Exception as exc:  # noqa: BLE001 — keep auditioning the rest
-            logger.warning("  [TTS] sample failed for %s/%s: %s", engine, voice, exc)
+            logger.warning("  [TTS] sample failed for %s: %s", tts.label, exc)
     return written
