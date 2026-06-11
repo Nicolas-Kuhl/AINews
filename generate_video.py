@@ -89,6 +89,17 @@ def main():
     size_mb = out.stat().st_size / 1e6
     print(f"\n✓ Rendered: {out} ({size_mb:.1f} MB)")
 
+    # Refresh the episode podcast feed so the new video is subscribable.
+    if args.still is None:
+        from ainews.video.feed import write_episode_feed
+
+        feed_path, count = write_episode_feed(
+            PROJECT_ROOT / "data" / "videos",
+            PROJECT_ROOT / "data" / "video_scripts",
+            show_name=show_name,
+        )
+        print(f"✓ Feed updated: {feed_path} ({count} episodes)")
+
 
 if __name__ == "__main__":
     main()
