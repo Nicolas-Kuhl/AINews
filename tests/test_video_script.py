@@ -187,7 +187,8 @@ class GenerateScriptTests(unittest.TestCase):
 
     def test_merged_duplicate_segment_accepted(self) -> None:
         # 6 segments for 7 stories: the model merged duplicate coverage — fine
-        draft = _script_response(6, words_per_section=110)
+        # (8 sections x 97 words = 776 ≈ the 775-word target, no revision pass)
+        draft = _script_response(6, words_per_section=97)
         client = _StubClient([json.dumps(draft)])
 
         script = generate_script(client, self._stories(7), target_minutes=5)
