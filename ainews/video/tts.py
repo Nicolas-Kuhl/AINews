@@ -25,7 +25,7 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_VOICE = "Ruth"
+DEFAULT_VOICE = "Olivia"  # en-AU generative — the show's host voice
 DEFAULT_ENGINE = "generative"
 # Generative and long-form engines have limited regional availability;
 # us-east-1 has every engine and voice. TTS is offline work — cross-region

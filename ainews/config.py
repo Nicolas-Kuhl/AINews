@@ -50,7 +50,7 @@ def load_config(path: Path = CONFIG_PATH) -> dict:
     # TTS (Stage 2 of the daily video pipeline) defaults — Amazon Polly via
     # instance-role credentials; us-east-1 has all engines/voices.
     tts = cfg.setdefault("tts", {})
-    tts.setdefault("voice", "Ruth")
+    tts.setdefault("voice", "Olivia")  # en-AU generative
     tts.setdefault("engine", "generative")
     tts.setdefault("region", "us-east-1")
 
