@@ -9,6 +9,7 @@ import re
 import anthropic
 from rapidfuzz import fuzz
 
+from ainews.processing.deduplicator import parse_first_json_array
 from ainews.storage.database import Database, is_vendor_url
 
 logger = logging.getLogger(__name__)
@@ -247,9 +248,10 @@ def deep_semantic_dedup(
             response = client.messages.create(
                 model=model,
                 max_tokens=4096,
-                messages=[{
-                    "role": "user",
-                    "content": f"""You are a news deduplication assistant. For each pair below, determine if article A is about the same specific news story/event as article B. Use the titles, sources, and summaries to make your judgment.
+                messages=[
+                    {
+                        "role": "user",
+                        "content": f"""You are a news deduplication assistant. For each pair below, determine if article A is about the same specific news story/event as article B. Use the titles, sources, and summaries to make your judgment.
 
 Answer ONLY with a JSON array of pair numbers that ARE about the same story. If none match, return an empty array [].
 
@@ -258,23 +260,17 @@ Be strict: two articles must be about the same specific event or announcement to
 {pairs_text}
 
 Return ONLY a JSON array, e.g. [1, 3] or []. No other text.""",
-                }],
+                    },
+                    # Prefill anchors the reply as a JSON array, suppressing
+                    # the analysis preamble the model sometimes writes first.
+                    {"role": "assistant", "content": "["},
+                ],
             )
-            response_text = (response.content[0].text or "").strip()
-            if not response_text:
-                logger.warning(
-                    "  Deep semantic dedup: empty response on batch %d-%d",
-                    batch_start, batch_start + len(batch),
-                )
-                continue
-            # Strip markdown fences if present
-            stripped = re.sub(r"^```(?:json)?\s*|\s*```$", "", response_text).strip()
-            # Find the outermost JSON array (handles both flat [1,2,3] and
-            # cluster-of-clusters [[1,2],[3,4]] schemas the model sometimes
-            # returns despite the instruction).
-            m = re.search(r"\[[\s\S]*\]", stripped)
-            payload = m.group(0) if m else stripped
-            batch_data = json.loads(payload)
+            response_text = "[" + (response.content[0].text or "").strip()
+            # Tolerant parse: real JSON decode at each '[' until one succeeds
+            # (handles flat [1,2,3], cluster-of-clusters [[1,2],[3,4]], and
+            # any stray prose despite the prefill).
+            batch_data = parse_first_json_array(response_text)
             # Normalise to a flat list of integers. Cluster schema means each
             # sub-list is a set of indices to be merged — every index in it
             # is part of a confirmed-same-story group, so all of them count.

@@ -56,6 +56,17 @@ def write_last_run_timestamp(timestamp_path: Path):
         f.write(datetime.now().isoformat())
 
 
+def _due_grace_minutes(interval_minutes: float) -> float:
+    """Scheduling tolerance subtracted from the interval when deciding dueness.
+
+    A scan records its timestamp a few seconds to minutes AFTER the cron tick
+    that started it (fetch time), so a strict ``elapsed >= interval`` check
+    drifts permanently: daily feeds stamped 18:00:03 are one second short at
+    the next night's 18:00:02 check and silently skip the whole day.
+    """
+    return max(2.0, interval_minutes * 0.01)
+
+
 def get_due_feeds(feeds: list[dict], cfg: dict, db: Database) -> list[dict]:
     """Return only feeds whose category interval has elapsed since their last scan."""
     now = datetime.now()
@@ -71,7 +82,7 @@ def get_due_feeds(feeds: list[dict], cfg: dict, db: Database) -> list[dict]:
         if last_scanned_str:
             last_scanned = datetime.fromisoformat(last_scanned_str)
             elapsed_minutes = (now - last_scanned).total_seconds() / 60
-            if elapsed_minutes < interval_minutes:
+            if elapsed_minutes < interval_minutes - _due_grace_minutes(interval_minutes):
                 continue
         due.append(feed)
     return due
@@ -90,7 +101,7 @@ def get_due_queries(queries: list[dict], cfg: dict, db: Database) -> list[dict]:
         if last_scanned_str:
             last_scanned = datetime.fromisoformat(last_scanned_str)
             elapsed_minutes = (now - last_scanned).total_seconds() / 60
-            if elapsed_minutes < interval_minutes:
+            if elapsed_minutes < interval_minutes - _due_grace_minutes(interval_minutes):
                 continue
         due.append(q)
     return due
