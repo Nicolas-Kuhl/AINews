@@ -27,3 +27,5 @@ rapidfuzz>=3.0.0
 pyyaml>=6.0.3
 python-dateutil>=2.9.0.post0
 tenacity>=8.2.0
+
+boto3>=1.34  # Amazon Polly TTS (video pipeline stage 2)
