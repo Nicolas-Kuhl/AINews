@@ -87,7 +87,11 @@ def main():
 
     _log(f"=== The Daily Prompt — episode pipeline for {date} ===")
 
-    if out_mp4.exists() and not args.force:
+    # Skip only when the episode is fully complete (script AND video). A
+    # missing script means a regeneration was requested (delete the script
+    # to re-run with fresh stories); a missing mp4 means a prior run failed
+    # mid-pipeline — both should run.
+    if out_mp4.exists() and script_json.exists() and not args.force:
         _log(f"episode already rendered ({out_mp4.name}) — nothing to do (use --force to redo)")
         return
 
