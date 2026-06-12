@@ -8,7 +8,17 @@ issue renders consistently in Gmail, Apple Mail, Outlook, etc.
 
 from __future__ import annotations
 
+import re
 from html import escape
+
+_BOLD_RE = re.compile(r"\*\*(.+?)\*\*")
+
+
+def _intro_html(intro: str) -> str:
+    """Escape, then turn the brief's **markdown bold** into <strong>."""
+    out = escape(intro)
+    out = _BOLD_RE.sub(r"<strong style='color:#f4f4f5'>\1</strong>", out)
+    return out.replace("\n", "<br>")
 
 BG = "#0b0d12"
 CARD = "#13161d"
@@ -45,7 +55,7 @@ def _story_html(i: int, s: dict) -> str:
 
 def render_html(nl: dict) -> str:
     rows = "".join(_story_html(i, s) for i, s in enumerate(nl["stories"], 1))
-    intro = escape(nl.get("intro", "")).replace("\n", "<br>")
+    intro = _intro_html(nl.get("intro", ""))
     intro_block = (
         f'<tr><td style="padding:8px 0 20px;font-family:{FONT};font-size:15px;'
         f'color:{TEXT};line-height:1.6;">{intro}</td></tr>' if intro else ""
