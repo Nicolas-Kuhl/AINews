@@ -44,6 +44,29 @@ def _client(api_key: str) -> httpx.Client:
     )
 
 
+def probe_avatar_iv(api_key: str) -> None:
+    """Empirically check what the Avatar IV (image-to-video) endpoint accepts —
+    crucially whether it lip-syncs to an EXISTING audio file (keeping Sophia)
+    or forces HeyGen TTS. Hits the endpoint with a deliberately minimal body
+    and prints the validation error, which reveals the required fields."""
+    with _client(api_key) as c:
+        print("=== photo/talking_photo avatars (Avatar IV source candidates) ===")
+        for path in ("/v2/talking_photos", "/v1/talking_photo.list"):
+            try:
+                r = c.get(path)
+                print(f"  GET {path} -> {r.status_code}: {r.text[:200]}")
+            except Exception as exc:  # noqa: BLE001
+                print(f"  GET {path} -> error {exc}")
+        print("=== Avatar IV generate probes (reading required fields from errors) ===")
+        for path in ("/v2/video/av4/generate", "/v1/video/av4/generate",
+                     "/v2/photo_avatar/video/generate"):
+            try:
+                r = c.post(path, json={"probe": True})
+                print(f"  POST {path} -> {r.status_code}: {r.text[:280]}")
+            except Exception as exc:  # noqa: BLE001
+                print(f"  POST {path} -> error {exc}")
+
+
 def list_avatars(api_key: str) -> None:
     with _client(api_key) as c:
         r = c.get("/v2/avatars")
@@ -69,20 +92,21 @@ def _upload_presigned(s3, bucket: str, local: Path, key: str, hours: int = 6) ->
         "get_object", Params={"Bucket": bucket, "Key": key}, ExpiresIn=hours * 3600)
 
 
-def _submit(c: httpx.Client, avatar_id: str, audio_url: str) -> str:
-    """Request a TRANSPARENT WebM avatar lip-synced to existing audio.
+GREEN = "#00b140"  # uniform synthetic green; keyed out in the renderer
 
-    With webm output HeyGen removes the background automatically (alpha
-    channel), so no green-screen chroma-key step is needed downstream.
-    """
+
+def _submit(c: httpx.Client, avatar_id: str, audio_url: str) -> str:
+    """Request an avatar on a solid green background, lip-synced to existing
+    audio. The green is removed at render time by the in-Remotion chroma key,
+    so this works with any avatar (no transparent-matting support needed)."""
     payload = {
         "video_inputs": [{
             "character": {"type": "avatar", "avatar_id": avatar_id,
                           "avatar_style": "normal"},
             "voice": {"type": "audio", "audio_url": audio_url},
+            "background": {"type": "color", "value": GREEN},
         }],
         "dimension": {"width": 720, "height": 720},
-        "output_format": "webm",
     }
     r = c.post("/v2/video/generate", json=payload)
     if r.status_code >= 400:
@@ -112,6 +136,8 @@ def main():
     ap.add_argument("--segments", type=int, default=2,
                     help="How many story segments (after cold open) get the avatar")
     ap.add_argument("--list-avatars", action="store_true")
+    ap.add_argument("--probe-iv", action="store_true",
+                    help="Probe the Avatar IV API to see if it accepts existing audio")
     args = ap.parse_args()
 
     api_key = os.environ.get("HEYGEN_API_KEY")
@@ -121,6 +147,9 @@ def main():
 
     if args.list_avatars:
         list_avatars(api_key)
+        return
+    if args.probe_iv:
+        probe_avatar_iv(api_key)
         return
     if not args.avatar_id:
         print("ERROR: --avatar-id required (see --list-avatars)")
@@ -159,15 +188,15 @@ def main():
             jobs[s["key"]] = vid
             print(f"  submitted {s['key']} -> {vid}")
 
-        # 3: poll + download the transparent webm, upload for the renderer
+        # 3: poll + download the green-screen clip, upload for the renderer
         avatar_urls = {}
         for s in chosen:
             print(f"  polling {s['key']}...")
             url = _poll(c, jobs[s["key"]])
-            webm = work / f"{s['key']}.webm"
-            webm.write_bytes(httpx.get(url, timeout=180).content)
+            clip = work / f"{s['key']}.mp4"
+            clip.write_bytes(httpx.get(url, timeout=180).content)
             avatar_urls[s["key"]] = _upload_presigned(
-                s3, bucket, webm, f"avatar-webm/{date}/{webm.name}")
+                s3, bucket, clip, f"avatar-clip/{date}/{clip.name}")
             print(f"  {s['key']} ready")
 
     # 6: build props with avatar overlays, render
