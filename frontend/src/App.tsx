@@ -16,6 +16,7 @@ import {
   unreadCount,
 } from "./lib/filter";
 import { useKeyboardNav } from "./lib/keyboard";
+import { useReaderWidth } from "./lib/useReaderWidth";
 import { Day, Filters, MorningBrief, Nav, Story, Theme } from "./types";
 import "./styles/triage.css";
 import "./styles/extras.css";
@@ -183,9 +184,19 @@ function ReaderApp({ args }: ComponentProps) {
   });
 
   const groupByDay = nav === "digest";
+  const [readerWidth, startResize] = useReaderWidth();
+  const showReader = selectedStory != null;
 
   return (
-    <div className="app is-three-pane" data-theme={theme}>
+    <div
+      className="app is-three-pane"
+      data-theme={theme}
+      style={
+        showReader
+          ? ({ "--reader-w": `${readerWidth}px` } as React.CSSProperties)
+          : undefined
+      }
+    >
       <Sidebar
         nav={nav}
         setNav={setNav}
@@ -216,6 +227,16 @@ function ReaderApp({ args }: ComponentProps) {
           </>
         )}
       </main>
+      {showReader && (
+        <div
+          className="reader-resize-handle"
+          onPointerDown={startResize}
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize reading pane"
+          title="Drag to resize"
+        />
+      )}
       <Reader
         story={selectedStory}
         theme={theme}

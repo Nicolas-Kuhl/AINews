@@ -53,16 +53,51 @@ html, body, #root {
   overflow: hidden;
 }
 .app.is-three-pane {
+  position: relative;
   max-width: none;
   margin: 0;
-  grid-template-columns: 240px minmax(0, 1fr) 540px;
+  grid-template-columns: 240px minmax(0, 1fr) var(--reader-w, 540px);
   height: 100vh;
   min-height: 0;
 }
 @media (max-width: 1200px) {
   .app.is-three-pane {
-    grid-template-columns: 240px minmax(0, 1fr) 460px;
+    grid-template-columns: 240px minmax(0, 1fr) var(--reader-w, 460px);
   }
+}
+/* The reader fills its (now variable-width) grid column. */
+.app.is-three-pane .reader {
+  width: 100%;
+  max-width: none;
+}
+/* Drag grip on the reader's left edge. Absolutely positioned so it never
+   participates in the grid; sits over the column boundary. */
+.reader-resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: var(--reader-w, 540px);
+  width: 9px;
+  margin-right: -5px;
+  cursor: col-resize;
+  z-index: 30;
+  touch-action: none;
+}
+.reader-resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 1px;
+  background: var(--rule);
+  transition: background 0.12s, width 0.12s;
+}
+.reader-resize-handle:hover::after,
+.reader-resize-handle:active::after {
+  background: var(--accent);
+  width: 3px;
+  left: 3px;
 }
 
 /* Main pane scroll container — use height (not min-height) so overflow-y
