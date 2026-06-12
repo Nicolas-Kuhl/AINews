@@ -64,6 +64,64 @@ def _instance_role_env() -> dict:
         return {}
 
 
+SCREENSHOT_DIR = PROJECT_ROOT / "data" / "video_screenshots"
+
+
+def _attach_segment_backdrops(manifest: dict, script: dict, date: str) -> None:
+    """Capture each segment's source page; set section['backdrop'] to a local
+    file path for captures that succeed. Failures leave no backdrop (the
+    renderer falls back to the gradient)."""
+    from ainews.video.screenshots import capture_screenshots
+
+    segments = script.get("segments", [])
+    seg_sections = [s for s in manifest["sections"] if s["kind"] == "segment"]
+    targets = []
+    for sec, seg in zip(seg_sections, segments):
+        url = seg.get("url", "")
+        if url:
+            targets.append((sec["key"], url))
+    if not targets:
+        return
+    out_dir = SCREENSHOT_DIR / date
+    print(f"Capturing {len(targets)} source-page screenshots...")
+    shots = capture_screenshots(targets, out_dir)
+    for sec in seg_sections:
+        path = shots.get(sec["key"])
+        if path:
+            sec["backdrop_file"] = str(path)  # transient; replaced by URL/relpath below
+    print(f"  {len(shots)}/{len(targets)} usable (rest fall back to gradient)")
+
+
+def _stage_backdrops_on_s3(manifest: dict, date: str, video_cfg: dict) -> None:
+    import boto3
+    from botocore.config import Config
+
+    bucket = video_cfg.get("assets_bucket", "ainews-render-assets")
+    region = video_cfg.get("lambda_region", "us-east-1")
+    s3 = boto3.client("s3", region_name=region,
+                      config=Config(retries={"max_attempts": 5, "mode": "adaptive"}))
+    for sec in manifest["sections"]:
+        local = sec.pop("backdrop_file", None)
+        if not local:
+            continue
+        key = f"screenshots/{date}/{Path(local).name}"
+        s3.upload_file(local, bucket, key)
+        sec["backdrop"] = s3.generate_presigned_url(
+            "get_object", Params={"Bucket": bucket, "Key": key}, ExpiresIn=4 * 3600)
+
+
+def _stage_backdrops_local(manifest: dict, date: str) -> None:
+    public_dir = RENDERER_DIR / "public" / "screenshots" / date
+    public_dir.mkdir(parents=True, exist_ok=True)
+    for sec in manifest["sections"]:
+        local = sec.pop("backdrop_file", None)
+        if not local:
+            continue
+        dest = public_dir / Path(local).name
+        shutil.copy2(local, dest)
+        sec["backdrop"] = f"screenshots/{date}/{dest.name}"
+
+
 def _stage_audio_on_s3(manifest: dict, audio_dir: Path, date: str, video_cfg: dict) -> dict:
     """Upload episode audio to S3 and swap props audio paths for presigned URLs."""
     import boto3
@@ -144,16 +202,23 @@ def main():
         intro_audio=intro_audio,
     )
 
+    # Capture source-page screenshots for segment backdrops (unless disabled).
+    # Stills/previews skip it — quick iterations don't need the network round-trip.
+    if cfg.get("video", {}).get("screenshots", True) and args.still is None and not args.preview:
+        _attach_segment_backdrops(manifest, script, date)
+
     if use_lambda:
         # Lambda renderers can't reach this disk — audio goes to S3 and the
         # props point at presigned URLs (valid well past any render).
         manifest = _stage_audio_on_s3(manifest, audio_dir, date, video_cfg)
+        _stage_backdrops_on_s3(manifest, date, video_cfg)
     else:
         # Stage audio under renderer/public so Remotion's staticFile() sees it
         public_audio = RENDERER_DIR / "public" / "audio" / date
         public_audio.mkdir(parents=True, exist_ok=True)
         for entry in audio_manifest["sections"]:
             shutil.copy2(audio_dir / entry["audio"], public_audio / entry["audio"])
+        _stage_backdrops_local(manifest, date)
 
     props_path = write_render_manifest(manifest, RENDERER_DIR / "public" / f"props-{date}.json")
 

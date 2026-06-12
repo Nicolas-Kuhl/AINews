@@ -17,6 +17,9 @@ export type Section = {
   /** 1-based segment number (segments only) */
   index?: number;
   bullets?: Bullet[];
+  /** Source-page screenshot backdrop: an S3 URL (Lambda) or a public-relative
+   *  path (local). Absent => fall back to the branded gradient. */
+  backdrop?: string;
 };
 
 export type EpisodeProps = {

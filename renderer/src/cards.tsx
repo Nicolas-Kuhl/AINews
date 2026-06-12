@@ -258,6 +258,49 @@ const BulletRow: React.FC<{ text: string; revealFrame: number }> = ({
   );
 };
 
+/** Dimmed, slowly-drifting source-page screenshot behind a segment, with a
+ *  left-weighted dark scrim so the headline and bullets stay crisp. */
+const SegmentBackdrop: React.FC<{ src: string; durationSeconds: number }> = ({
+  src,
+  durationSeconds,
+}) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const p = Math.min(1, frame / Math.max(1, durationSeconds * fps));
+  const resolved = src.startsWith("http") ? src : staticFile(src);
+  const scale = 1.06 + p * 0.09; // slow zoom
+  const tx = -p * 28; // gentle pan
+  const ty = -p * 14;
+
+  return (
+    <AbsoluteFill>
+      <Img
+        src={resolved}
+        style={{
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          opacity: 0.26,
+          transform: `scale(${scale}) translate(${tx}px, ${ty}px)`,
+        }}
+      />
+      <AbsoluteFill
+        style={{
+          background:
+            "linear-gradient(105deg, rgba(11,13,18,0.95) 0%, rgba(11,13,18,0.82) 48%, rgba(11,13,18,0.42) 100%)",
+        }}
+      />
+      {/* extra bottom darkening for the source chip / footer */}
+      <AbsoluteFill
+        style={{
+          background:
+            "linear-gradient(0deg, rgba(11,13,18,0.85) 0%, transparent 22%)",
+        }}
+      />
+    </AbsoluteFill>
+  );
+};
+
 export const SegmentCard: React.FC<{
   section: Section;
   episode: EpisodeProps;
@@ -268,7 +311,14 @@ export const SegmentCard: React.FC<{
   const bullets = section.bullets ?? [];
 
   return (
-    <AbsoluteFill style={{ opacity, padding: 120 }}>
+    <AbsoluteFill style={{ opacity }}>
+      {section.backdrop ? (
+        <SegmentBackdrop
+          src={section.backdrop}
+          durationSeconds={section.durationSeconds}
+        />
+      ) : null}
+      <AbsoluteFill style={{ padding: 120 }}>
       {/* header */}
       <div
         style={{
@@ -360,6 +410,7 @@ export const SegmentCard: React.FC<{
           {episode.date}
         </div>
       </div>
+      </AbsoluteFill>
     </AbsoluteFill>
   );
 };

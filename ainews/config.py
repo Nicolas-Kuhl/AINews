@@ -72,6 +72,7 @@ def load_config(path: Path = CONFIG_PATH) -> dict:
     video.setdefault("lambda_region", "us-east-1")
     video.setdefault("lambda_site", "ainews")
     video.setdefault("assets_bucket", "ainews-render-assets")
+    video.setdefault("screenshots", True)  # source-page backdrops per segment
 
     # Embedding clusterer (owns group_id) — Bedrock Titan via instance role
     emb = cfg.setdefault("embeddings", {})
