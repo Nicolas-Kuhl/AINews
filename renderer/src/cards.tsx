@@ -280,14 +280,14 @@ const SegmentBackdrop: React.FC<{ src: string; durationSeconds: number }> = ({
           width: "100%",
           height: "100%",
           objectFit: "cover",
-          opacity: 0.26,
+          opacity: 0.45,
           transform: `scale(${scale}) translate(${tx}px, ${ty}px)`,
         }}
       />
       <AbsoluteFill
         style={{
           background:
-            "linear-gradient(105deg, rgba(11,13,18,0.95) 0%, rgba(11,13,18,0.82) 48%, rgba(11,13,18,0.42) 100%)",
+            "linear-gradient(105deg, rgba(11,13,18,0.94) 0%, rgba(11,13,18,0.68) 52%, rgba(11,13,18,0.18) 100%)",
         }}
       />
       {/* extra bottom darkening for the source chip / footer */}
