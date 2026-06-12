@@ -75,19 +75,25 @@ def main():
 
     html = render_html(nl)
     text = render_text(nl)
-    json_path = write_newsletter_json(nl, newsletter_dir)
     html_path = newsletter_dir / f"{nl['issue_date']}.html"
+    newsletter_dir.mkdir(parents=True, exist_ok=True)
     html_path.write_text(html, encoding="utf-8")
     print(f"Composed: {nl['subject']}")
-    print(f"  {len(nl['stories'])} stories · saved {json_path.name}, {html_path.name}")
+    print(f"  {len(nl['stories'])} stories · saved {html_path.name}")
 
     if args.dry_run:
+        # No archive JSON on dry runs — it would make these stories count as
+        # "already covered" and starve the real send.
         print(f"\n✓ Dry run — preview: {html_path}")
         try:
             webbrowser.open(html_path.resolve().as_uri())
         except Exception:
             pass
         return
+
+    # Archive the issue (drives day-to-day dedup) only when actually sending.
+    json_path = write_newsletter_json(nl, newsletter_dir)
+    print(f"  archived {json_path.name}")
 
     from_addr = nl_cfg.get("from_address")
     recipients = nl_cfg.get("recipients", [])
