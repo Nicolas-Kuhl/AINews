@@ -388,22 +388,15 @@ class EditorialWeightTests(unittest.TestCase):
                           url="https://www.anthropic.com/news/ipo", category="Business")
         self.assertFalse(story_signals(p, r)["is_vendor_announcement"])
 
-    def test_kicker_is_lightest_non_major_story(self):
-        from ainews.processing.video_script import pick_kicker_index
-        stories = [
-            self._pair("Anthropic launches Claude 5", score=9,
-                       url="https://www.anthropic.com/news/x", category="New Releases"),
-            self._pair("Big funding round", score=8, related_sources=["A", "B", "C"]),
-            self._pair("Serious policy news", score=7),
-            self._pair("Quirky robot does a dance", score=6),
-        ]
-        idx = pick_kicker_index(stories)
-        self.assertEqual(stories[idx][0].title, "Quirky robot does a dance")
-
-    def test_no_kicker_for_small_episodes(self):
-        from ainews.processing.video_script import pick_kicker_index
-        stories = [self._pair("A", score=7), self._pair("B", score=6)]
-        self.assertIsNone(pick_kicker_index(stories))
+    def test_vendor_bonus_does_not_overturn_two_point_score_gap(self):
+        from ainews.processing.video_script import rank_stories
+        # A score-9 major story must still lead a score-7 vendor release.
+        major = self._pair("Huge industry shakeup", score=9,
+                           related_sources=["A", "B"])
+        vendor = self._pair("Mistral ships small model", score=7,
+                            url="https://mistral.ai/news/x", category="New Releases")
+        ranked = rank_stories([vendor, major])
+        self.assertEqual(ranked[0][0].title, "Huge industry shakeup")
 
 
 class PreviouslyCoveredUrlsTests(unittest.TestCase):

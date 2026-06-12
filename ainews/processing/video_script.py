@@ -48,7 +48,8 @@ FRONTIER_VENDOR_DOMAINS = {
 ANNOUNCEMENT_CATEGORIES = {"New Releases", "Developer Tools"}
 
 # Editorial weighting (added to the cluster's max impact score, 1-10).
-VENDOR_ANNOUNCEMENT_BONUS = 2.5   # frontier-lab release/tool post
+VENDOR_ANNOUNCEMENT_BONUS = 1.5   # frontier-lab release/tool post (moderate:
+                                  # edges similar-scored news, not a clear lead)
 ECHO_BONUS_PER_SOURCE = 0.4       # each extra outlet covering the story...
 ECHO_BONUS_CAP = 2.0              # ...up to this much
 
@@ -171,10 +172,12 @@ Ordering (the run of show):
   ANNOUNCEMENT or one covered by many outlets is almost always the lead.
 - Then move through the rest roughly in importance order, grouping related
   stories so the show flows like one person talking.
-- If a story is tagged KICKER, place it LAST and let the host sign off out of
-  it — it's the lighter note to end on.
+- END on the lightest or most fun story you have — give the sign-off a warm,
+  upbeat close rather than ending on heavy news. (If everything is heavy,
+  just end on the least weighty story.)
 - The story notes are already pre-sorted by editorial weight (most important
-  first); respect that order unless flow or the kicker rule says otherwise.
+  first); respect that order for the opening and middle, then lift a lighter
+  story to the end for the close.
 
 Hard requirements:
 - Exactly {n_stories} segments. Exception: if two story notes are clearly
@@ -210,7 +213,6 @@ def _format_story_block(
     primary: ProcessedNewsItem,
     related: list,
     summary_max: int = 700,
-    is_kicker: bool = False,
 ) -> str:
     """Format one story group as notes for the prompt, with editorial tags."""
     summary = (primary.summary or "").strip().replace("\n", " ")
@@ -223,8 +225,6 @@ def _format_story_block(
         tags.append("OFFICIAL VENDOR ANNOUNCEMENT")
     if sig["source_count"] >= 3:
         tags.append(f"{sig['source_count']} outlets covering — major story")
-    if is_kicker:
-        tags.append("KICKER — the lighter story; place LAST, lead the sign-off out of it")
     tag_line = f"Editorial: {' | '.join(tags)}" if tags else None
 
     lines = [
@@ -242,28 +242,6 @@ def _format_story_block(
         if others:
             lines.append(f"Also covered by: {others}")
     return "\n".join(lines)
-
-
-def pick_kicker_index(stories: list) -> Optional[int]:
-    """Index of the story to hold as the closing kicker, or None.
-
-    The lightest serious-news item: lowest editorial weight among non-vendor,
-    non-major stories. Only designated when the episode has enough stories that
-    spending the last slot on a lighter note doesn't crowd out real news.
-    """
-    if len(stories) < 4:
-        return None
-    candidates = [
-        (i, story_signals(p, r))
-        for i, (p, r) in enumerate(stories)
-    ]
-    eligible = [
-        (i, sig) for i, sig in candidates
-        if not sig["is_vendor_announcement"] and sig["source_count"] < 3
-    ]
-    if not eligible:
-        return None
-    return min(eligible, key=lambda x: x[1]["weight"])[0]
 
 
 def count_narration_words(script: dict) -> int:
@@ -452,9 +430,8 @@ def generate_script(
     sign_off_words = 45
     segment_words = max(60, (target_words - cold_open_words - sign_off_words) // n_stories)
 
-    kicker_idx = pick_kicker_index(stories)
     stories_block = "\n\n".join(
-        _format_story_block(i + 1, primary, related, is_kicker=(i == kicker_idx))
+        _format_story_block(i + 1, primary, related)
         for i, (primary, related) in enumerate(stories)
     )
     prompt = _SCRIPT_PROMPT.format(
