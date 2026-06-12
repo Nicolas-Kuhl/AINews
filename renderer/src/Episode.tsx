@@ -9,7 +9,7 @@ import {
 import { ColdOpenCard, IntroCard, SegmentCard, SignOffCard } from "./cards";
 import { Backdrop } from "./Backdrop";
 import { theme } from "./theme";
-import { EpisodeProps, SECTION_GAP_SECONDS } from "./types";
+import { EpisodeProps, gapAfterSeconds } from "./types";
 
 export const Episode: React.FC<EpisodeProps> = (props) => {
   const frame = useCurrentFrame();
@@ -22,7 +22,7 @@ export const Episode: React.FC<EpisodeProps> = (props) => {
       <Series>
         {props.sections.map((section) => {
           const frames = Math.ceil(
-            (section.durationSeconds + SECTION_GAP_SECONDS) * fps,
+            (section.durationSeconds + gapAfterSeconds(section.kind)) * fps,
           );
           // Local renders bundle audio via staticFile; Lambda renders get
           // S3 presigned URLs (the function can't see the EC2 disk).

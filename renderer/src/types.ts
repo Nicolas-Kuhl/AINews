@@ -29,6 +29,20 @@ export type EpisodeProps = {
   sections: Section[];
 };
 
-/** Pause inserted after each section's audio ends. */
-export const SECTION_GAP_SECONDS = 0.35;
 export const FPS = 30;
+
+/** Silent pause inserted after a section's audio ends, before the next one.
+ *  A deliberate beat between spoken segments signals "new story"; the intro
+ *  sting flows into the cold open with only a short breath. */
+export const gapAfterSeconds = (kind: SectionKind): number => {
+  switch (kind) {
+    case "intro":
+      return 0.25; // sting → cold open, keep it tight
+    case "segment":
+    case "cold_open":
+      return 0.8; // the clear inter-segment pause
+    case "sign_off":
+    default:
+      return 0.4;
+  }
+};

@@ -1,7 +1,7 @@
 import { Composition, Still } from "remotion";
 import { Cover } from "./Cover";
 import { Episode } from "./Episode";
-import { EpisodeProps, FPS, SECTION_GAP_SECONDS } from "./types";
+import { EpisodeProps, FPS, gapAfterSeconds } from "./types";
 
 const SAMPLE_PROPS: EpisodeProps = {
   date: "2026-06-10",
@@ -57,7 +57,7 @@ export const Root: React.FC = () => {
       defaultProps={SAMPLE_PROPS}
       calculateMetadata={({ props }) => {
         const totalSeconds = props.sections.reduce(
-          (acc, s) => acc + s.durationSeconds + SECTION_GAP_SECONDS,
+          (acc, s) => acc + s.durationSeconds + gapAfterSeconds(s.kind),
           0,
         );
         return {
