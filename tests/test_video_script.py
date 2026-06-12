@@ -419,3 +419,65 @@ class PreviouslyCoveredUrlsTests(unittest.TestCase):
     def test_missing_dir_returns_empty(self):
         from ainews.processing.video_script import previously_covered_urls
         self.assertEqual(previously_covered_urls(Path("/nonexistent-dir-xyz")), set())
+
+
+class WeekendRollupTests(unittest.TestCase):
+    def test_monday_widens_to_72h(self):
+        from ainews.processing.video_script import effective_fresh_hours
+        from datetime import datetime, timezone
+        monday = datetime(2026, 6, 15, 19, 0, tzinfo=timezone.utc)  # a Monday
+        self.assertEqual(monday.weekday(), 0)
+        self.assertEqual(effective_fresh_hours(24, monday), 72)
+
+    def test_other_weekdays_unchanged(self):
+        from ainews.processing.video_script import effective_fresh_hours
+        from datetime import datetime, timezone
+        for d, name in [(16, "Tue"), (17, "Wed"), (18, "Thu"), (19, "Fri")]:
+            dt = datetime(2026, 6, d, 19, 0, tzinfo=timezone.utc)
+            self.assertEqual(effective_fresh_hours(24, dt), 24, name)
+
+    def test_rollup_can_be_disabled(self):
+        from ainews.processing.video_script import effective_fresh_hours
+        from datetime import datetime, timezone
+        monday = datetime(2026, 6, 15, 19, 0, tzinfo=timezone.utc)
+        self.assertEqual(effective_fresh_hours(24, monday, weekend_rollup=False), 24)
+
+    def _insert_at(self, db, title, score, ref, hours_before):
+        # Stamp published relative to the test's reference time, not real now.
+        it = _item(title, score=score)
+        it.published = ref - timedelta(hours=hours_before)
+        db.insert(it)
+
+    def test_monday_selection_includes_weekend_story(self):
+        import os, tempfile
+        from datetime import datetime, timezone
+        from ainews.storage.database import Database
+        from ainews.processing.video_script import select_stories
+        db = Database(os.path.join(tempfile.mkdtemp(), "t.db"))
+        try:
+            monday = datetime(2026, 6, 15, 19, 0, tzinfo=timezone.utc)
+            self._insert_at(db, "Weekend launch", 8, monday, 62)  # Sat — in 72h, not 24h
+            self._insert_at(db, "Monday news", 7, monday, 2)
+            sel = select_stories(db, hours=24, min_score=6, max_stories=5, now=monday)
+            titles = [p.title for p, _ in sel]
+            self.assertIn("Weekend launch", titles)
+            self.assertIn("Monday news", titles)
+        finally:
+            db.close()
+
+    def test_tuesday_excludes_old_weekend_story(self):
+        import os, tempfile
+        from datetime import datetime, timezone
+        from ainews.storage.database import Database
+        from ainews.processing.video_script import select_stories
+        db = Database(os.path.join(tempfile.mkdtemp(), "t.db"))
+        try:
+            tuesday = datetime(2026, 6, 16, 19, 0, tzinfo=timezone.utc)
+            self._insert_at(db, "Old weekend story", 7, tuesday, 62)  # >24h, score<8
+            self._insert_at(db, "Tuesday news", 7, tuesday, 2)
+            sel = select_stories(db, hours=24, min_score=6, max_stories=5, now=tuesday)
+            titles = [p.title for p, _ in sel]
+            self.assertNotIn("Old weekend story", titles)
+            self.assertIn("Tuesday news", titles)
+        finally:
+            db.close()

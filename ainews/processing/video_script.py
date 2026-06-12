@@ -311,6 +311,23 @@ def previously_covered_urls(scripts_dir: Path, days: int = 14) -> "set[str]":
     return covered
 
 
+def effective_fresh_hours(base_hours: int, now: datetime, weekend_rollup: bool = True) -> int:
+    """Widen the fresh window on Monday to fold in the (unrun) weekend.
+
+    Episodes run weekdays only; the weekend's news has no edition of its own.
+    On Monday we therefore reach back across Saturday and Sunday to the last
+    Friday run so weekend stories get full consideration (already-covered
+    Friday items are excluded by the caller's exclude_urls). Other weekdays
+    keep the normal window.
+    """
+    if not weekend_rollup:
+        return base_hours
+    # Monday=0. Cover Mon + Sun + Sat back to Friday's ~19:00 run ≈ 72h.
+    if now.weekday() == 0:
+        return max(base_hours, 72)
+    return base_hours
+
+
 def _query_window(
     db: Database,
     *,
@@ -346,6 +363,7 @@ def select_stories(
     now: Optional[datetime] = None,
     on_date: Optional[str] = None,
     exclude_urls: "Optional[set[str]]" = None,
+    weekend_rollup: bool = True,
 ) -> list:
     """Pick the top story groups as (primary, [related]) pairs.
 
@@ -375,6 +393,9 @@ def select_stories(
         return rank_stories(pairs)[:max_stories]
 
     now = now or datetime.now(timezone.utc)
+    hours = effective_fresh_hours(hours, now, weekend_rollup)
+    # Catch-up window must extend beyond the (possibly widened) fresh window.
+    catchup_hours = max(catchup_hours, hours)
     fresh_start = now - timedelta(hours=hours)
     # Fresh stories fill the episode first, ranked by composite editorial weight.
     selected = rank_stories(_query_window(
