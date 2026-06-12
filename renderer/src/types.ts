@@ -20,9 +20,6 @@ export type Section = {
   /** Source-page screenshot backdrop: an S3 URL (Lambda) or a public-relative
    *  path (local). Absent => fall back to the branded gradient. */
   backdrop?: string;
-  /** Talking-head overlay (chroma-keyed webm with alpha) for this section's
-   *  spoken audio. URL or public-relative path. Absent => no avatar. */
-  avatar?: string;
 };
 
 export type EpisodeProps = {

@@ -210,16 +210,6 @@ def main():
             and args.still is None and not args.preview):
         _attach_segment_backdrops(manifest, script, date)
 
-    # Experimental: inject HeyGen avatar overlays from a map written by
-    # scripts/heygen_avatar_test.py (key -> webm URL). One-off, env-gated.
-    avatar_map_path = os.environ.get("AVATAR_MAP")
-    if avatar_map_path and Path(avatar_map_path).exists():
-        avatar_urls = json.loads(Path(avatar_map_path).read_text())
-        for sec in manifest["sections"]:
-            if sec["key"] in avatar_urls:
-                sec["avatar"] = avatar_urls[sec["key"]]
-        print(f"Injected {len(avatar_urls)} avatar overlays")
-
     if use_lambda:
         # Lambda renderers can't reach this disk — audio goes to S3 and the
         # props point at presigned URLs (valid well past any render).
