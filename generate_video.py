@@ -271,8 +271,6 @@ def main():
     print(f"Rendering -> {out}")
     env = None
     if use_lambda:
-        import os
-
         env = {
             **os.environ,
             **_instance_role_env(),
