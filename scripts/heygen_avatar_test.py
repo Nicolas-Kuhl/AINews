@@ -5,10 +5,10 @@ Experimental / manual — NOT part of the nightly pipeline. For the cold open
 and the first N segments of an already-generated episode, it:
 
   1. uploads each section's narration mp3 to S3 (presigned, for HeyGen to fetch)
-  2. asks HeyGen for an avatar lip-synced to that audio on a green screen
-  3. polls until each render is done, downloads the mp4
-  4. chroma-keys green -> transparent webm (static ffmpeg with libvpx)
-  5. uploads the webms to S3 and renders the episode with avatar overlays
+  2. asks HeyGen for a TRANSPARENT WebM avatar lip-synced to that audio
+     (webm output => alpha channel, no green-screen/chroma-key needed)
+  3. polls until each render is done, downloads the webm
+  4. uploads the webms to S3 and writes an avatar map for generate_video.py
 
 Requires HEYGEN_API_KEY in the environment. Avatar chosen via --avatar-id
 (list them with --list-avatars).
@@ -21,7 +21,6 @@ Usage:
 import argparse
 import json
 import os
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -35,7 +34,6 @@ from ainews.config import load_config  # noqa: E402
 PROJECT_ROOT = Path(__file__).parent.parent
 RENDERER_DIR = PROJECT_ROOT / "renderer"
 HEYGEN_BASE = "https://api.heygen.com"
-GREEN = "#00b140"  # broadcast chroma green
 
 
 def _client(api_key: str) -> httpx.Client:
@@ -72,17 +70,23 @@ def _upload_presigned(s3, bucket: str, local: Path, key: str, hours: int = 6) ->
 
 
 def _submit(c: httpx.Client, avatar_id: str, audio_url: str) -> str:
+    """Request a TRANSPARENT WebM avatar lip-synced to existing audio.
+
+    With webm output HeyGen removes the background automatically (alpha
+    channel), so no green-screen chroma-key step is needed downstream.
+    """
     payload = {
         "video_inputs": [{
             "character": {"type": "avatar", "avatar_id": avatar_id,
                           "avatar_style": "normal"},
             "voice": {"type": "audio", "audio_url": audio_url},
-            "background": {"type": "color", "value": GREEN},
         }],
         "dimension": {"width": 720, "height": 720},
+        "output_format": "webm",
     }
     r = c.post("/v2/video/generate", json=payload)
-    r.raise_for_status()
+    if r.status_code >= 400:
+        raise RuntimeError(f"HeyGen submit {r.status_code}: {r.text[:300]}")
     return r.json()["data"]["video_id"]
 
 
@@ -101,15 +105,6 @@ def _poll(c: httpx.Client, video_id: str, timeout_s: int = 900) -> str:
     raise TimeoutError(f"HeyGen video {video_id} not done in {timeout_s}s")
 
 
-def _chroma_key(ffmpeg: str, mp4: Path, webm: Path) -> None:
-    # Remove green -> alpha; encode VP9 with alpha so Remotion/Chromium composites it.
-    subprocess.run([
-        ffmpeg, "-y", "-i", str(mp4),
-        "-vf", f"chromakey=0x00b140:0.13:0.06,format=yuva420p",
-        "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-an", str(webm),
-    ], check=True, capture_output=True)
-
-
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--date", default="2026-06-11")
@@ -117,7 +112,6 @@ def main():
     ap.add_argument("--segments", type=int, default=2,
                     help="How many story segments (after cold open) get the avatar")
     ap.add_argument("--list-avatars", action="store_true")
-    ap.add_argument("--ffmpeg", default="ffmpeg")
     args = ap.parse_args()
 
     api_key = os.environ.get("HEYGEN_API_KEY")
@@ -165,17 +159,13 @@ def main():
             jobs[s["key"]] = vid
             print(f"  submitted {s['key']} -> {vid}")
 
-        # 3: poll + download
+        # 3: poll + download the transparent webm, upload for the renderer
         avatar_urls = {}
         for s in chosen:
             print(f"  polling {s['key']}...")
             url = _poll(c, jobs[s["key"]])
-            mp4 = work / f"{s['key']}.mp4"
-            mp4.write_bytes(httpx.get(url, timeout=120).content)
-            # 4: chroma key
             webm = work / f"{s['key']}.webm"
-            _chroma_key(args.ffmpeg, mp4, webm)
-            # 5: upload webm
+            webm.write_bytes(httpx.get(url, timeout=180).content)
             avatar_urls[s["key"]] = _upload_presigned(
                 s3, bucket, webm, f"avatar-webm/{date}/{webm.name}")
             print(f"  {s['key']} ready")
