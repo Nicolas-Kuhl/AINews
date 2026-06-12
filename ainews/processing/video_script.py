@@ -30,8 +30,87 @@ from typing import Optional
 
 import anthropic
 
+from urllib.parse import urlparse
+
 from ainews.models import ProcessedNewsItem
 from ainews.storage.database import Database
+
+
+# Frontier labs whose official posts earn the announcement bonus. Deliberately
+# tighter than the storage layer's VENDOR_DOMAINS (which includes platforms
+# like NVIDIA/HuggingFace) — here we want the headline model makers only.
+FRONTIER_VENDOR_DOMAINS = {
+    "openai.com", "anthropic.com", "deepmind.google", "deepmind.com",
+    "blog.google", "ai.meta.com", "about.fb.com", "x.ai", "mistral.ai",
+}
+
+# Categories that count as a "release/launch" for the announcement bonus.
+ANNOUNCEMENT_CATEGORIES = {"New Releases", "Developer Tools"}
+
+# Editorial weighting (added to the cluster's max impact score, 1-10).
+VENDOR_ANNOUNCEMENT_BONUS = 1.5   # frontier-lab release/tool post (moderate:
+                                  # edges similar-scored news, not a clear lead)
+ECHO_BONUS_PER_SOURCE = 0.4       # each extra outlet covering the story...
+ECHO_BONUS_CAP = 2.0              # ...up to this much
+
+
+def _is_frontier_vendor(url: str) -> bool:
+    try:
+        host = urlparse(url or "").netloc.lower().removeprefix("www.")
+    except Exception:
+        return False
+    return any(host == d or host.endswith("." + d) for d in FRONTIER_VENDOR_DOMAINS)
+
+
+def story_signals(primary: ProcessedNewsItem, related: list) -> dict:
+    """Editorial signals for one story cluster, used for ranking + annotation.
+
+    - ``weight``: composite editorial weight (rank key).
+    - ``is_vendor_announcement``: a frontier-lab release/tool post anchors it.
+    - ``source_count``: distinct outlets in the cluster (media echo).
+    - ``max_score``: highest impact score across the cluster (not just primary).
+    """
+    members = [primary, *related]
+    sources = {m.source for m in members if m.source}
+    source_count = max(1, len(sources))
+    max_score = max(m.score for m in members)
+
+    is_vendor_announcement = (
+        primary.category in ANNOUNCEMENT_CATEGORIES
+        and any(_is_frontier_vendor(m.url) for m in members)
+    )
+
+    weight = float(max_score)
+    if is_vendor_announcement:
+        weight += VENDOR_ANNOUNCEMENT_BONUS
+    weight += min(ECHO_BONUS_CAP, ECHO_BONUS_PER_SOURCE * (source_count - 1))
+
+    return {
+        "weight": weight,
+        "is_vendor_announcement": is_vendor_announcement,
+        "source_count": source_count,
+        "max_score": max_score,
+    }
+
+
+def rank_stories(pairs: list) -> list:
+    """Sort (primary, related) clusters by composite editorial weight, desc.
+
+    Ties broken by raw cluster score, then recency of the primary.
+    """
+    def _norm(dt):
+        # Historical rows can be naive; normalize so the sort never mixes
+        # offset-naive and offset-aware datetimes.
+        if dt is None:
+            return datetime.min.replace(tzinfo=timezone.utc)
+        return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
+
+    def _key(pair):
+        primary, related = pair
+        sig = story_signals(primary, related)
+        return (sig["weight"], sig["max_score"], _norm(primary.published))
+
+    return sorted(pairs, key=_key, reverse=True)
 
 
 DEFAULT_SCRIPT_MODEL = "claude-sonnet-4-6"
@@ -88,11 +167,22 @@ Episode structure — respond with VALID JSON ONLY, exactly this shape:
   "sign_off": "~{sign_off_words} words. Land one last laugh and sign off."
 }}
 
+Ordering (the run of show):
+- OPEN with the most important development — a story tagged OFFICIAL VENDOR
+  ANNOUNCEMENT or one covered by many outlets is almost always the lead.
+- Then move through the rest roughly in importance order, grouping related
+  stories so the show flows like one person talking.
+- END on the lightest or most fun story you have — give the sign-off a warm,
+  upbeat close rather than ending on heavy news. (If everything is heavy,
+  just end on the least weighty story.)
+- The story notes are already pre-sorted by editorial weight (most important
+  first); respect that order for the opening and middle, then lift a lighter
+  story to the end for the close.
+
 Hard requirements:
-- Exactly {n_stories} segments, in the order that makes the best SHOW (you may
-  reorder; lead with your strongest material, end on the second-strongest).
-  Exception: if two story notes are clearly duplicate coverage of the SAME
-  news, merge them into one segment (cite the stronger source).
+- Exactly {n_stories} segments. Exception: if two story notes are clearly
+  duplicate coverage of the SAME news, merge them into one segment (cite the
+  stronger source).
 - Total narration (cold_open + all segment narration + sign_off) must be
   {target_words} words, within about 10%. Count as you go.
 - Every segment's "source" and "url" must be copied verbatim from its story
@@ -124,18 +214,29 @@ def _format_story_block(
     related: list,
     summary_max: int = 700,
 ) -> str:
-    """Format one story group as notes for the prompt."""
+    """Format one story group as notes for the prompt, with editorial tags."""
     summary = (primary.summary or "").strip().replace("\n", " ")
     if len(summary) > summary_max:
         summary = summary[:summary_max].rsplit(" ", 1)[0] + "…"
+
+    sig = story_signals(primary, related)
+    tags = []
+    if sig["is_vendor_announcement"]:
+        tags.append("OFFICIAL VENDOR ANNOUNCEMENT")
+    if sig["source_count"] >= 3:
+        tags.append(f"{sig['source_count']} outlets covering — major story")
+    tag_line = f"Editorial: {' | '.join(tags)}" if tags else None
+
     lines = [
         f"[Story {index}]",
         f"Title: {primary.title}",
         f"Source: {primary.source}",
         f"URL: {primary.url}",
         f"Category: {primary.category} | Impact score: {primary.score}/10",
-        f"Summary: {summary}",
     ]
+    if tag_line:
+        lines.append(tag_line)
+    lines.append(f"Summary: {summary}")
     if related:
         others = ", ".join(sorted({r.source for r in related if r.source}))
         if others:
@@ -271,34 +372,37 @@ def select_stories(
             db, start=start, end=start + timedelta(days=1),
             min_score=min_score, exclude_urls=exclude_urls,
         )
-        return pairs[:max_stories]
+        return rank_stories(pairs)[:max_stories]
 
     now = now or datetime.now(timezone.utc)
     fresh_start = now - timedelta(hours=hours)
-    selected = _query_window(
+    # Fresh stories fill the episode first, ranked by composite editorial weight.
+    selected = rank_stories(_query_window(
         db, start=fresh_start, end=None,
         min_score=min_score, exclude_urls=exclude_urls,
-    )[:max_stories]
+    ))[:max_stories]
 
     if catchup_hours > hours:
-        catchups = _query_window(
+        catchups = rank_stories(_query_window(
             db, start=now - timedelta(hours=catchup_hours), end=fresh_start,
             min_score=catchup_min_score, exclude_urls=exclude_urls,
-        )
+        ))
         for pair in catchups:
             if len(selected) < max_stories:
                 selected.append(pair)
                 continue
-            # Episode is full: only a 9+ may displace, and only a strictly
-            # weaker fresh story.
-            if pair[0].score < 9:
+            # Episode is full: a catch-up only displaces a strictly weaker
+            # fresh story, and only if it's itself a heavyweight (weight >= 9 —
+            # e.g. a major vendor release that missed yesterday's cutoff).
+            cand_w = story_signals(*pair)["weight"]
+            if cand_w < 9:
                 continue
-            weakest = min(range(len(selected)), key=lambda i: selected[i][0].score)
-            if selected[weakest][0].score < pair[0].score:
+            weakest = min(range(len(selected)),
+                          key=lambda i: story_signals(*selected[i])["weight"])
+            if story_signals(*selected[weakest])["weight"] < cand_w:
                 selected[weakest] = pair
 
-    selected.sort(key=lambda p: p[0].score, reverse=True)
-    return selected
+    return rank_stories(selected)
 
 
 def generate_script(
