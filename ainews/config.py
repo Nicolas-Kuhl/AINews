@@ -73,6 +73,15 @@ def load_config(path: Path = CONFIG_PATH) -> dict:
     video.setdefault("lambda_site", "ainews")
     video.setdefault("assets_bucket", "ainews-render-assets")
 
+    # Embedding clusterer (owns group_id) — Bedrock Titan via instance role
+    emb = cfg.setdefault("embeddings", {})
+    emb.setdefault("model_id", "amazon.titan-embed-text-v2:0")
+    emb.setdefault("region", "us-east-1")
+    emb.setdefault("dimensions", 512)
+    emb.setdefault("threshold", 0.80)
+    emb.setdefault("window_days", 14)
+    emb.setdefault("max_span_days", 4)
+
     # Newsletter defaults
     nl = cfg.setdefault("newsletters", {"enabled": False, "senders": []})
     nl.setdefault("enabled", False)

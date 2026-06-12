@@ -5,7 +5,6 @@ import logging
 import re
 from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 
-import anthropic
 from rapidfuzz import fuzz
 
 from ainews.models import RawNewsItem
@@ -157,74 +156,3 @@ def deduplicate(
         unique.append(item)
 
     return unique, borderline
-
-
-def semantic_dedup(
-    client: anthropic.Anthropic,
-    model: str,
-    borderline_pairs: list[tuple[str, str]],
-) -> list[tuple[str, str]]:
-    """Use Claude to judge whether borderline title pairs are about the same story.
-
-    Instead of removing duplicates, returns confirmed same-story pairs so they
-    can be grouped together (showing all sources for a single story).
-
-    Args:
-        client: Anthropic API client.
-        model: Model ID to use (e.g. claude-sonnet-4-5-20250929).
-        borderline_pairs: (new_title, matched_existing_title) pairs to judge.
-
-    Returns:
-        List of (new_title, existing_title) pairs confirmed as same story.
-    """
-    if not borderline_pairs:
-        return []
-
-    # Build the prompt with all borderline pairs
-    pairs_text = "\n".join(
-        f'{i+1}. A: "{new}"\n   B: "{existing}"'
-        for i, (new, existing) in enumerate(borderline_pairs)
-    )
-
-    response = client.messages.create(
-        model=model,
-        max_tokens=1024,
-        messages=[
-            {
-                "role": "user",
-                "content": f"""You are a news deduplication assistant. For each pair below, determine if headline A is about the same specific news story/event as headline B.
-
-Answer ONLY with a JSON array of pair numbers that ARE about the same story. If none match, return an empty array [].
-
-Be strict: two articles must be about the same specific event or announcement to count. Articles about the same general topic but different events are NOT the same story.
-
-{pairs_text}
-
-Return ONLY a JSON array, e.g. [1, 3] or []. No other text.""",
-            },
-            # Prefill anchors the reply as a JSON array, suppressing preamble prose.
-            {"role": "assistant", "content": "["},
-        ],
-    )
-
-    # Parse Claude's response (re-attach the prefilled bracket)
-    response_text = "[" + response.content[0].text.strip()
-    try:
-        match_indices = parse_first_json_array(response_text)
-    except ValueError:
-        logger.warning(f"Semantic dedup: could not parse response: {response_text[:200]}")
-        return []
-
-    if not match_indices:
-        return []
-
-    # Return the confirmed same-story pairs
-    confirmed: list[tuple[str, str]] = []
-    for idx in match_indices:
-        if isinstance(idx, int) and 1 <= idx <= len(borderline_pairs):
-            confirmed.append(borderline_pairs[idx - 1])
-
-    if confirmed:
-        logger.info(f"  Semantic dedup found {len(confirmed)} same-story pair{'s' if len(confirmed) != 1 else ''}")
-
-    return confirmed

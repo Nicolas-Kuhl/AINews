@@ -108,6 +108,15 @@ CREATE TABLE IF NOT EXISTS day_briefs (
 );
 """
 
+SCHEMA_ITEM_EMBEDDINGS = """
+CREATE TABLE IF NOT EXISTS item_embeddings (
+    item_id INTEGER PRIMARY KEY REFERENCES news_items(id),
+    model TEXT NOT NULL,
+    dim INTEGER NOT NULL,
+    vector BLOB NOT NULL
+);
+"""
+
 
 class Database:
     def __init__(self, db_path: str):
@@ -212,6 +221,7 @@ class Database:
         self.conn.executescript(SCHEMA_SOURCES)
         self.conn.executescript(SCHEMA_MORNING_BRIEFS)
         self.conn.executescript(SCHEMA_DAY_BRIEFS)
+        self.conn.executescript(SCHEMA_ITEM_EMBEDDINGS)
         self.conn.commit()
         # Migrate `sources` rows if the CHECK constraint is still the old
         # five-type schema (Official / Press / Research / Platform / Newsletter).
@@ -469,6 +479,49 @@ class Database:
             for r in rows
         ]
 
+    def upsert_embedding(self, item_id: int, model: str, dim: int, vector_blob: bytes) -> None:
+        self.conn.execute(
+            "INSERT OR REPLACE INTO item_embeddings (item_id, model, dim, vector) "
+            "VALUES (?, ?, ?, ?)",
+            (item_id, model, dim, vector_blob),
+        )
+
+    def get_embeddings(self, item_ids: list[int], model: str) -> dict[int, bytes]:
+        """vector blobs for the given items (only rows matching ``model``)."""
+        if not item_ids:
+            return {}
+        out: dict[int, bytes] = {}
+        CHUNK = 500  # stay under SQLite's bound-parameter limit
+        for i in range(0, len(item_ids), CHUNK):
+            chunk = item_ids[i : i + CHUNK]
+            placeholders = ",".join("?" for _ in chunk)
+            rows = self.conn.execute(
+                f"SELECT item_id, vector FROM item_embeddings "
+                f"WHERE model = ? AND item_id IN ({placeholders})",
+                [model, *chunk],
+            ).fetchall()
+            for r in rows:
+                out[r["item_id"]] = r["vector"]
+        return out
+
+    def get_items_for_clustering(self, window_days: Optional[int]) -> list[dict]:
+        """Items the clusterer considers: id, title, summaries, published, group_id.
+
+        Window bounded by published date (NULL-published items included so a
+        fresh undated item still clusters). Ordered published ASC so earlier
+        coverage seeds the cluster a later rewrite joins.
+        """
+        sql = ("SELECT id, title, short_summary, summary, published, group_id, url, score "
+               "FROM news_items")
+        params: list = []
+        if window_days is not None:
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=window_days)).isoformat()
+            sql += " WHERE (published >= ? OR published IS NULL)"
+            params.append(cutoff)
+        sql += " ORDER BY published ASC, id ASC"
+        rows = self.conn.execute(sql, params).fetchall()
+        return [dict(r) for r in rows]
+
     def get_group_items(self, group_id: int) -> list[dict]:
         """Full membership of a group: id, url, score, published (for primary pick)."""
         rows = self.conn.execute(
@@ -717,13 +770,17 @@ class Database:
         for item in ungrouped_items:
             folded.append((item, []))
 
-        # Bucket by the PRIMARY's publish day
+        # Bucket by the group's MOST RECENT coverage, not the primary's day —
+        # a still-developing story stays visible on the latest day instead of
+        # hiding under the date its first report happened to carry.
         day_buckets: dict[str, list[tuple[ProcessedNewsItem, list[ProcessedNewsItem]]]] = {}
         for primary, related in folded:
-            if primary.published:
-                day_key = primary.published.strftime("%Y-%m-%d")
-            else:
-                day_key = "Unknown"
+            # _norm: avoid naive/aware mixing inside max()
+            newest = max(
+                (_norm(m.published) for m in [primary, *related] if m.published),
+                default=None,
+            )
+            day_key = newest.strftime("%Y-%m-%d") if newest else "Unknown"
             day_buckets.setdefault(day_key, []).append((primary, related))
 
         sorted_days = sorted(day_buckets.keys(), reverse=True)[:limit_days]

@@ -14,8 +14,7 @@ from ainews.config import load_config
 from ainews.fetchers.content_fetcher import fetch_content_for_items
 from ainews.fetchers.rss_fetcher import fetch_all_feeds
 from ainews.fetchers.web_searcher import search_all_queries
-from ainews.processing.deduplicator import deduplicate, semantic_dedup
-from ainews.processing.grouper import deep_semantic_dedup, run_grouper
+from ainews.processing.deduplicator import deduplicate
 from ainews.processing.scorer import score_items
 from ainews.rss_generator import save_rss_feed
 from ainews.storage.database import Database
@@ -209,15 +208,8 @@ def main():
         borderline_low=cfg.get("borderline_threshold", 50),
     )
     logger.info(f"  After fuzzy dedup: {len(new_items)} new items")
-    if borderline_pairs:
-        logger.info(f"  Borderline pairs for semantic review: {len(borderline_pairs)}")
-
-    # 5b. Semantic dedup — use Claude to identify same-story pairs for grouping
-    semantic_pairs: list[tuple[str, str]] = []
-    if new_items and borderline_pairs and cfg.get("semantic_dedup", True):
-        logger.info("  Running semantic dedup with Claude...")
-        client = anthropic.Anthropic(api_key=api_key)
-        semantic_pairs = semantic_dedup(client, cfg["model"], borderline_pairs)
+    # (Borderline same-story matching now happens in the embedding clusterer —
+    # no per-pair Claude calls needed.)
     logger.info(f"  New unique items: {len(new_items)}")
 
     if not new_items:
@@ -270,27 +262,22 @@ def main():
         if row_id:
             stored += 1
 
-    # 7. Run smart grouper
-    logger.info("\n[7/8] Running smart grouper...")
-    group_count = run_grouper(db)
-    logger.info(f"  Created {group_count} groups")
-
-    # 7b. Group semantic matches that the fuzzy grouper may have missed
-    if semantic_pairs:
-        semantic_grouped = db.group_by_title_pairs(semantic_pairs)
-        if semantic_grouped:
-            logger.info(f"  Semantic grouping added {semantic_grouped} additional group{'s' if semantic_grouped != 1 else ''}")
-
-    # 7c. Deep semantic dedup — catches cross-publisher rewrites that the
-    # fuzzy grouper misses (e.g. "Anthropic files IPO" vs "S&P 500 rejects
-    # SpaceX, also blocking Anthropic"). Scoped to the last 7 days so the
-    # daily Claude bill stays small.
-    logger.info("\n[7c] Deep semantic dedup (recent items)...")
+    # 7. Cluster stories by semantic embedding (single owner of group_id).
+    # Centroid + time-window clustering: same-event coverage merges, distinct
+    # events stay apart, and clusters cannot chain into topic mega-groups.
+    logger.info("\n[7/8] Clustering stories (embeddings)...")
     try:
-        semantic_count = deep_semantic_dedup(db, client, cfg["model"], since_days=7)
-        logger.info(f"  Confirmed and grouped {semantic_count} additional pairs")
+        from ainews.processing.clusterer import cluster_recent_items
+        ecfg = cfg.get("embeddings", {})
+        cluster_count = cluster_recent_items(
+            db,
+            threshold=ecfg.get("threshold", 0.80),
+            window_days=ecfg.get("window_days", 14),
+            max_span_days=ecfg.get("max_span_days", 4),
+        )
+        logger.info(f"  Clusters touched: {cluster_count}")
     except Exception as exc:  # noqa: BLE001
-        logger.warning(f"  Deep semantic dedup failed (non-fatal): {exc}")
+        logger.warning(f"  Clustering failed (non-fatal, items stay ungrouped): {exc}")
 
     # 8. Generate RSS feed
     logger.info("\n[8/8] Generating RSS feed...")
