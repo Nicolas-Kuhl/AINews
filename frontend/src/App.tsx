@@ -208,8 +208,21 @@ function ReaderApp({ args }: ComponentProps) {
       />
       <main className="main-pane">
         {nav === "settings" ? (
-          <div className="empty-msg">
-            Settings view lives in the legacy dashboard for now.
+          <div className="empty-msg settings-redirect">
+            <p>Settings (feeds, prompts, scan intervals) open in a dedicated page.</p>
+            <button
+              className="settings-open-btn"
+              onClick={() => {
+                // Component runs in a same-origin iframe; navigate the top page.
+                try {
+                  window.top!.location.href = "/?settings=1";
+                } catch {
+                  window.open("/?settings=1", "_blank");
+                }
+              }}
+            >
+              Open Settings →
+            </button>
           </div>
         ) : (
           <>
