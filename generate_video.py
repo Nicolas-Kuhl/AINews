@@ -205,7 +205,9 @@ def main():
 
     # Capture source-page screenshots for segment backdrops (unless disabled).
     # Stills/previews skip it — quick iterations don't need the network round-trip.
-    if cfg.get("video", {}).get("screenshots", True) and args.still is None and not args.preview:
+    if (cfg.get("video", {}).get("screenshots", True)
+            and not os.environ.get("AINEWS_DISABLE_SHOTS")
+            and args.still is None and not args.preview):
         _attach_segment_backdrops(manifest, script, date)
 
     # Experimental: inject HeyGen avatar overlays from a map written by
