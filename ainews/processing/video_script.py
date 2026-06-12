@@ -97,11 +97,17 @@ def rank_stories(pairs: list) -> list:
 
     Ties broken by raw cluster score, then recency of the primary.
     """
+    def _norm(dt):
+        # Historical rows can be naive; normalize so the sort never mixes
+        # offset-naive and offset-aware datetimes.
+        if dt is None:
+            return datetime.min.replace(tzinfo=timezone.utc)
+        return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
+
     def _key(pair):
         primary, related = pair
         sig = story_signals(primary, related)
-        pub = primary.published or datetime.min.replace(tzinfo=timezone.utc)
-        return (sig["weight"], sig["max_score"], pub)
+        return (sig["weight"], sig["max_score"], _norm(primary.published))
 
     return sorted(pairs, key=_key, reverse=True)
 
