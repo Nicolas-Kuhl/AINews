@@ -83,7 +83,18 @@ def load_config(path: Path = CONFIG_PATH) -> dict:
     emb.setdefault("window_days", 14)
     emb.setdefault("max_span_days", 4)
 
-    # Newsletter defaults
+    # Email newsletter (SES) defaults. Set from_address + recipients to enable.
+    nlw = cfg.setdefault("newsletter", {})
+    nlw.setdefault("enabled", False)
+    nlw.setdefault("from_address", "")          # e.g. "The Daily Prompt <news@eyrean.com>"
+    nlw.setdefault("recipients", [])
+    nlw.setdefault("ses_region", "us-west-1")
+    nlw.setdefault("min_score", 6)
+    nlw.setdefault("max_stories", 12)
+    nlw.setdefault("site_url", "https://ainews.eyrean.com")
+    nlw.setdefault("unsubscribe_address", "")
+
+    # Newsletter (IMAP ingestion) defaults
     nl = cfg.setdefault("newsletters", {"enabled": False, "senders": []})
     nl.setdefault("enabled", False)
     nl.setdefault("imap_host", "imap.gmail.com")
