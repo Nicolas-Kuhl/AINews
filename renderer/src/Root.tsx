@@ -1,4 +1,5 @@
-import { Composition } from "remotion";
+import { Composition, Still } from "remotion";
+import { Cover } from "./Cover";
 import { Episode } from "./Episode";
 import { EpisodeProps, FPS, SECTION_GAP_SECONDS } from "./types";
 
@@ -45,6 +46,8 @@ const SAMPLE_PROPS: EpisodeProps = {
 
 export const Root: React.FC = () => {
   return (
+    <>
+    <Still id="Cover" component={Cover} width={3000} height={3000} />
     <Composition
       id="Episode"
       component={Episode}
@@ -62,5 +65,6 @@ export const Root: React.FC = () => {
         };
       }}
     />
+    </>
   );
 };
