@@ -84,3 +84,31 @@ class FeedXmlTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ApplePodcastRequirementsTests(unittest.TestCase):
+    """Channel-level tags Apple Podcasts validates at submission."""
+
+    def _xml(self):
+        videos = Path(tempfile.mkdtemp())
+        scripts = Path(tempfile.mkdtemp())
+        _make_episode(videos, scripts, "2026-06-11")
+        path, _ = write_episode_feed(videos, scripts)
+        return path.read_text(encoding="utf-8")
+
+    def test_itunes_image_present(self):
+        self.assertIn('<itunes:image href="https://ainews.eyrean.com/videos/cover.jpg"/>', self._xml())
+
+    def test_categories_nested(self):
+        xml = self._xml()
+        self.assertIn('<itunes:category text="Technology"/>', xml)
+        self.assertIn('<itunes:category text="News">', xml)
+        self.assertIn('<itunes:category text="Tech News"/>', xml)
+
+    def test_owner_and_type(self):
+        xml = self._xml()
+        self.assertIn("<itunes:email>nicolas.kuhl.au@gmail.com</itunes:email>", xml)
+        self.assertIn("<itunes:type>episodic</itunes:type>", xml)
+
+    def test_episode_type_full(self):
+        self.assertIn("<itunes:episodeType>full</itunes:episodeType>", self._xml())
