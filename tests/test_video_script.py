@@ -344,6 +344,68 @@ class StorySelectionWindowTests(unittest.TestCase):
         self.assertNotIn("Today instead", titles)
 
 
+class EditorialWeightTests(unittest.TestCase):
+    def _pair(self, title, score, url="https://example.com/x", category="Business",
+              related_sources=()):
+        primary = _item(title, score=score)
+        primary.url = url
+        primary.category = category
+        related = []
+        for i, src in enumerate(related_sources):
+            r = _item(f"{title} via {src}", score=score)
+            r.source = src
+            related.append(r)
+        return (primary, related)
+
+    def test_vendor_announcement_outranks_higher_scored_opinion(self):
+        from ainews.processing.video_script import rank_stories
+        vendor = self._pair("Anthropic launches Claude 5", score=7,
+                             url="https://www.anthropic.com/news/claude-5",
+                             category="New Releases",
+                             related_sources=["TechCrunch", "Wired", "The Verge"])
+        opinion = self._pair("Why AI might plateau", score=8)
+        ranked = rank_stories([opinion, vendor])
+        self.assertEqual(ranked[0][0].title, "Anthropic launches Claude 5")
+
+    def test_non_frontier_vendor_gets_no_announcement_bonus(self):
+        from ainews.processing.video_script import story_signals
+        # NVIDIA is a vendor in the storage layer but NOT a frontier lab here
+        p, r = self._pair("NVIDIA ships new SDK", score=7,
+                          url="https://nvidia.com/blog/sdk", category="Developer Tools")
+        self.assertFalse(story_signals(p, r)["is_vendor_announcement"])
+
+    def test_media_echo_bonus_caps(self):
+        from ainews.processing.video_script import story_signals
+        many = self._pair("Big story", score=6,
+                          related_sources=[f"Outlet{i}" for i in range(10)])
+        sig = story_signals(*many)
+        self.assertEqual(sig["weight"], 6 + 2.0)  # echo capped at +2
+
+    def test_vendor_release_must_be_release_category(self):
+        from ainews.processing.video_script import story_signals
+        # frontier vendor URL but a Business story (e.g. an Anthropic IPO post)
+        p, r = self._pair("Anthropic files for IPO", score=8,
+                          url="https://www.anthropic.com/news/ipo", category="Business")
+        self.assertFalse(story_signals(p, r)["is_vendor_announcement"])
+
+    def test_kicker_is_lightest_non_major_story(self):
+        from ainews.processing.video_script import pick_kicker_index
+        stories = [
+            self._pair("Anthropic launches Claude 5", score=9,
+                       url="https://www.anthropic.com/news/x", category="New Releases"),
+            self._pair("Big funding round", score=8, related_sources=["A", "B", "C"]),
+            self._pair("Serious policy news", score=7),
+            self._pair("Quirky robot does a dance", score=6),
+        ]
+        idx = pick_kicker_index(stories)
+        self.assertEqual(stories[idx][0].title, "Quirky robot does a dance")
+
+    def test_no_kicker_for_small_episodes(self):
+        from ainews.processing.video_script import pick_kicker_index
+        stories = [self._pair("A", score=7), self._pair("B", score=6)]
+        self.assertIsNone(pick_kicker_index(stories))
+
+
 class PreviouslyCoveredUrlsTests(unittest.TestCase):
     def test_reads_story_urls_from_recent_scripts(self):
         import json as _json
