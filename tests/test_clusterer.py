@@ -215,3 +215,71 @@ class ClustererTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BorderlineJudgeTests(unittest.TestCase):
+    """Stage-2 LLM-judged merges for pairs in the borderline cosine band."""
+
+    def setUp(self):
+        import tempfile, os
+        self.db = Database(os.path.join(tempfile.mkdtemp(), "t.db"))
+
+    def tearDown(self):
+        self.db.close()
+
+    def _groups(self):
+        rows = self.db.conn.execute("SELECT title, group_id FROM news_items").fetchall()
+        return {r["title"]: r["group_id"] for r in rows}
+
+    def test_borderline_same_event_merges_when_judge_says_yes(self):
+        # Two items ~0.62 apart (borderline: below 0.80 auto, above 0.45 floor).
+        mapping = {
+            "Anthropic suspends Mythos access": _unit(0.0),
+            "Europe reacts to Anthropic halting Mythos": _unit(0.9),  # cos≈0.62
+        }
+        for t in mapping:
+            self._insert(self.db, t, mapping)
+        judged = []
+        def judge(pairs):
+            judged.append(pairs)
+            return [True] * len(pairs)  # "same event"
+        cluster_recent_items(self.db, _FakeEmbedder(mapping), threshold=0.80, judge=judge)
+        g = self._groups()
+        self.assertEqual(len(judged), 1)  # judge was consulted
+        self.assertEqual(g["Anthropic suspends Mythos access"],
+                         g["Europe reacts to Anthropic halting Mythos"])
+        self.assertIsNotNone(g["Anthropic suspends Mythos access"])
+
+    def test_borderline_different_event_stays_split_when_judge_says_no(self):
+        mapping = {
+            "OpenAI threat report on Chinese actors": _unit(0.0),
+            "Google sues Chinese cybercrime network": _unit(0.9),  # cos≈0.62, same topic
+        }
+        for t in mapping:
+            self._insert(self.db, t, mapping)
+        cluster_recent_items(self.db, _FakeEmbedder(mapping), threshold=0.80,
+                             judge=lambda pairs: [False] * len(pairs))
+        g = self._groups()
+        self.assertIsNone(g["OpenAI threat report on Chinese actors"])
+        self.assertIsNone(g["Google sues Chinese cybercrime network"])
+
+    def test_below_floor_never_reaches_judge(self):
+        mapping = {
+            "Totally unrelated story A": _unit(0.0),
+            "Totally unrelated story B": _unit(1.2),  # cos≈0.36 < 0.45 floor
+        }
+        for t in mapping:
+            self._insert(self.db, t, mapping)
+        seen = []
+        cluster_recent_items(self.db, _FakeEmbedder(mapping), threshold=0.80,
+                             judge=lambda pairs: seen.append(pairs) or [True] * len(pairs))
+        # No pair entered the band, so judge got nothing (or wasn't asked to merge)
+        self.assertTrue(all(len(p) == 0 for p in seen) or not seen)
+        g = self._groups()
+        self.assertIsNone(g["Totally unrelated story A"])
+
+    def _insert(self, db, title, mapping):
+        from datetime import datetime, timezone
+        it = _item(title, score=7)
+        it.published = datetime.now(timezone.utc)
+        db.insert(it)

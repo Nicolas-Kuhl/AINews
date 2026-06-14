@@ -82,6 +82,8 @@ def load_config(path: Path = CONFIG_PATH) -> dict:
     emb.setdefault("threshold", 0.80)
     emb.setdefault("window_days", 14)
     emb.setdefault("max_span_days", 4)
+    emb.setdefault("borderline_low", 0.45)  # two-stage dedup: LLM judges [0.45, 0.80)
+    emb.setdefault("llm_dedup", True)
 
     # Email newsletter (SES) defaults. Set from_address + recipients to enable.
     nlw = cfg.setdefault("newsletter", {})

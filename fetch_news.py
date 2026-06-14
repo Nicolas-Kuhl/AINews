@@ -265,15 +265,20 @@ def main():
     # 7. Cluster stories by semantic embedding (single owner of group_id).
     # Centroid + time-window clustering: same-event coverage merges, distinct
     # events stay apart, and clusters cannot chain into topic mega-groups.
-    logger.info("\n[7/8] Clustering stories (embeddings)...")
+    logger.info("\n[7/8] Clustering stories (embeddings + borderline LLM judge)...")
     try:
-        from ainews.processing.clusterer import cluster_recent_items
+        from ainews.processing.clusterer import cluster_recent_items, make_llm_judge
         ecfg = cfg.get("embeddings", {})
+        judge = None
+        if ecfg.get("llm_dedup", True):
+            judge = make_llm_judge(client, cfg["model"])
         cluster_count = cluster_recent_items(
             db,
             threshold=ecfg.get("threshold", 0.80),
             window_days=ecfg.get("window_days", 14),
             max_span_days=ecfg.get("max_span_days", 4),
+            borderline_low=ecfg.get("borderline_low", 0.45),
+            judge=judge,
         )
         logger.info(f"  Clusters touched: {cluster_count}")
     except Exception as exc:  # noqa: BLE001
