@@ -780,7 +780,13 @@ class Database:
                 (_norm(m.published) for m in [primary, *related] if m.published),
                 default=None,
             )
-            day_key = newest.strftime("%Y-%m-%d") if newest else "Unknown"
+            # Undated groups can't be placed on a timeline. They're almost
+            # always scraped page furniture (nav links, product tiles) rather
+            # than articles, so drop them from the chronological digest instead
+            # of piling them into an "Unknown" bucket that floods the view.
+            if newest is None:
+                continue
+            day_key = newest.strftime("%Y-%m-%d")
             day_buckets.setdefault(day_key, []).append((primary, related))
 
         sorted_days = sorted(day_buckets.keys(), reverse=True)[:limit_days]

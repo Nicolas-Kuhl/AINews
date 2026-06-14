@@ -208,6 +208,18 @@ def main():
         borderline_low=cfg.get("borderline_threshold", 50),
     )
     logger.info(f"  After fuzzy dedup: {len(new_items)} new items")
+    # Drop undated HTML-scraped items: a real article from a scrape virtually
+    # always carries a date; the dateless ones are nav links / product tiles /
+    # page headings the scraper mistook for stories. Dropping them here (before
+    # scoring) stops the junk flooding the DB and saves Claude calls. RSS and
+    # search items keep their dates, so they're unaffected.
+    pre = len(new_items)
+    new_items = [
+        it for it in new_items
+        if not (it.fetched_via == "html_scrape" and it.published is None)
+    ]
+    if pre != len(new_items):
+        logger.info(f"  Dropped {pre - len(new_items)} undated scrape fragments")
     # (Borderline same-story matching now happens in the embedding clusterer —
     # no per-pair Claude calls needed.)
     logger.info(f"  New unique items: {len(new_items)}")
