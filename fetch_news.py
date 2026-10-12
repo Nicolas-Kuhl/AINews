@@ -17,6 +17,7 @@ from ainews.fetchers.web_searcher import search_all_queries
 from ainews.processing.deduplicator import deduplicate
 from ainews.processing.scorer import score_items
 from ainews.rss_generator import save_rss_feed
+from ainews.runlock import RunLockBusy, run_lock
 from ainews.storage.database import Database
 
 
@@ -122,6 +123,17 @@ def main():
     # Set up logging with rotation
     logger = setup_logging(data_dir / "pipeline.log")
 
+    # One run at a time: the */15 trusted cron, the daily open cron, the
+    # dashboard's Run button and manual runs would otherwise overlap and
+    # double-pay for scoring.
+    try:
+        with run_lock(data_dir / ".pipeline.lock"):
+            _run_pipeline(category_filter, cfg, data_dir, logger)
+    except RunLockBusy:
+        logger.warning("Another pipeline run is still in progress; skipping this run.")
+
+
+def _run_pipeline(category_filter, cfg: dict, data_dir: Path, logger: logging.Logger):
     start_time = datetime.now()
     label = f" ({category_filter} only)" if category_filter else ""
     logger.info("\n" + "=" * 60)
@@ -278,6 +290,7 @@ def main():
     # Centroid + time-window clustering: same-event coverage merges, distinct
     # events stay apart, and clusters cannot chain into topic mega-groups.
     logger.info("\n[7/8] Clustering stories (embeddings + borderline LLM judge)...")
+    cluster_count = 0
     try:
         from ainews.processing.clusterer import cluster_recent_items, make_llm_judge
         ecfg = cfg.get("embeddings", {})
@@ -324,7 +337,7 @@ def main():
     logger.info(f"  Fetched:     {len(combined)} total items")
     logger.info(f"  New:         {len(new_items)} after dedup")
     logger.info(f"  Stored:      {stored} items")
-    logger.info(f"  Groups:      {group_count}")
+    logger.info(f"  Clusters:    {cluster_count} touched")
     logger.info(f"  RSS feed:    {rss_count} items (score 8+)")
     logger.info("=" * 60)
     logger.info("\nRun 'streamlit run dashboard.py' to view results.")
