@@ -548,7 +548,7 @@ def _render_settings_tab(cfg, db, project_root):
                 log_area = st.empty()
                 log_text = ""
                 process = subprocess.Popen(
-                    [sys.executable, "-u", str(project_root / "fetch_news.py")],
+                    [sys.executable, "-u", str(project_root / "fetch_news.py"), "--no-wait"],
                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                     text=True, cwd=str(project_root),
                 )
@@ -560,6 +560,9 @@ def _render_settings_tab(cfg, db, project_root):
                 log_file.write_text(log_text)
                 if process.returncode == 0:
                     status.update(label="Pipeline complete!", state="complete")
+                elif process.returncode == 75:  # fetch_news.EXIT_LOCKED
+                    status.update(label="A pipeline run is already in progress — try again shortly",
+                                  state="error")
                 else:
                     status.update(label="Pipeline failed!", state="error")
 

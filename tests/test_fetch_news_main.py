@@ -59,8 +59,8 @@ class FetchNewsMainTests(unittest.TestCase):
         self.tmpdir = tempfile.mkdtemp()
         self.cfg = _cfg(self.tmpdir)
 
-    def _run_main(self, fetched: list[RawNewsItem]) -> None:
-        with mock.patch.object(sys, "argv", ["fetch_news.py"]), \
+    def _run_main(self, fetched: list[RawNewsItem], argv: tuple = ()) -> None:
+        with mock.patch.object(sys, "argv", ["fetch_news.py", *argv]), \
              mock.patch.object(fetch_news, "load_config", return_value=self.cfg), \
              mock.patch.object(fetch_news, "setup_logging",
                                return_value=logging.getLogger("test_fetch_news")), \
@@ -90,14 +90,62 @@ class FetchNewsMainTests(unittest.TestCase):
             self._run_main([_raw()])
         rescore.assert_called_once()
 
-    def test_exits_without_fetching_while_another_run_holds_the_lock(self) -> None:
+    def test_trusted_run_skips_while_another_run_holds_the_lock(self) -> None:
         from ainews.runlock import run_lock
 
         with run_lock(os.path.join(self.tmpdir, ".pipeline.lock")):
             with mock.patch.object(fetch_news, "get_due_feeds") as due:
-                self._run_main([_raw()])
+                with self.assertRaises(SystemExit) as exit_:
+                    self._run_main([_raw()], argv=("--category", "trusted"))
         due.assert_not_called()
+        self.assertNotEqual(exit_.exception.code, 0)
         self.assertFalse(os.path.exists(os.path.join(self.tmpdir, ".last_run")))
+
+    def test_open_run_waits_for_the_lock_instead_of_skipping(self) -> None:
+        """The */15 trusted cron and the daily open cron both fire at 18:00;
+        the open run (open feeds, search, newsletters) must not be dropped."""
+        import threading
+        import time
+        from ainews.runlock import run_lock
+
+        held = threading.Event()
+
+        def trusted_run_in_progress():
+            with run_lock(os.path.join(self.tmpdir, ".pipeline.lock")):
+                held.set()
+                time.sleep(0.5)
+
+        t = threading.Thread(target=trusted_run_in_progress)
+        t.start()
+        held.wait(2)
+        with mock.patch.object(fetch_news, "LOCK_POLL_SECONDS", 0.05):
+            self._run_main([_raw()], argv=("--category", "open"))
+        t.join()
+        self.assertTrue(os.path.exists(os.path.join(self.tmpdir, ".last_run")))
+
+    def test_no_wait_flag_returns_immediately_with_the_locked_exit_code(self) -> None:
+        """For the dashboard's Run button: report 'already running' at once
+        instead of blocking the page for up to the full wait limit."""
+        import time
+        from ainews.runlock import run_lock
+
+        with run_lock(os.path.join(self.tmpdir, ".pipeline.lock")), \
+             mock.patch.object(fetch_news, "LOCK_WAIT_SECONDS", 30):
+            start = time.monotonic()
+            with self.assertRaises(SystemExit) as exit_:
+                self._run_main([_raw()], argv=("--no-wait",))
+        self.assertLess(time.monotonic() - start, 2)
+        self.assertEqual(exit_.exception.code, fetch_news.EXIT_LOCKED)
+
+    def test_open_run_gives_up_after_the_wait_limit(self) -> None:
+        from ainews.runlock import run_lock
+
+        with run_lock(os.path.join(self.tmpdir, ".pipeline.lock")), \
+             mock.patch.object(fetch_news, "LOCK_WAIT_SECONDS", 0.2), \
+             mock.patch.object(fetch_news, "LOCK_POLL_SECONDS", 0.05):
+            with self.assertRaises(SystemExit) as exit_:
+                self._run_main([_raw()], argv=("--category", "open"))
+        self.assertNotEqual(exit_.exception.code, 0)
 
 
 if __name__ == "__main__":

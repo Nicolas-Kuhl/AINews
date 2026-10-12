@@ -5,12 +5,14 @@ button and a manual retry can all start while another run is still going.
 Overlapping runs double-pay for Claude scoring and fight over SQLite, so each
 entry point takes an exclusive, non-blocking OS file lock and exits quietly
 when another run holds it. The OS drops the lock if the process dies, so a
-crash never leaves a stale lock behind.
+crash never leaves a stale lock behind. Callers that must not be dropped
+(the daily run) can wait for the current holder instead of skipping.
 """
 
 from __future__ import annotations
 
 import os
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator, Union
@@ -40,19 +42,27 @@ else:
 
 
 @contextmanager
-def run_lock(path: Union[str, Path]) -> Iterator[None]:
+def run_lock(
+    path: Union[str, Path], wait_seconds: float = 0, poll_seconds: float = 10
+) -> Iterator[None]:
     """Hold an exclusive lock on ``path`` for the duration of the block.
 
-    Raises ``RunLockBusy`` immediately (never waits) if another process — or
-    another handle in this process — already holds it.
+    If another process — or another handle in this process — holds it, keep
+    retrying for up to ``wait_seconds`` (0 = don't wait), then raise
+    ``RunLockBusy``.
     """
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(str(path), os.O_RDWR | os.O_CREAT, 0o644)
     try:
-        try:
-            _try_lock(fd)
-        except OSError as exc:
-            raise RunLockBusy(f"{path} is held by another run") from exc
+        deadline = time.monotonic() + wait_seconds
+        while True:
+            try:
+                _try_lock(fd)
+                break
+            except OSError as exc:
+                if time.monotonic() >= deadline:
+                    raise RunLockBusy(f"{path} is held by another run") from exc
+                time.sleep(poll_seconds)
         try:
             yield
         finally:

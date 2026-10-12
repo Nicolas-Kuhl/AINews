@@ -25,6 +25,37 @@ class RunLockTests(unittest.TestCase):
         with run_lock(self.path):
             pass  # no RunLockBusy
 
+    def test_waiting_acquire_gets_the_lock_once_the_holder_finishes(self) -> None:
+        import threading
+        import time
+
+        held = threading.Event()
+
+        def holder():
+            with run_lock(self.path):
+                held.set()
+                time.sleep(0.3)
+
+        t = threading.Thread(target=holder)
+        t.start()
+        held.wait(2)
+        start = time.monotonic()
+        with run_lock(self.path, wait_seconds=5, poll_seconds=0.05):
+            waited = time.monotonic() - start
+        t.join()
+        self.assertGreater(waited, 0.1)
+        self.assertLess(waited, 3)
+
+    def test_waiting_acquire_gives_up_after_the_deadline(self) -> None:
+        import time
+
+        with run_lock(self.path):
+            start = time.monotonic()
+            with self.assertRaises(RunLockBusy):
+                with run_lock(self.path, wait_seconds=0.3, poll_seconds=0.05):
+                    pass
+            self.assertGreaterEqual(time.monotonic() - start, 0.25)
+
     def test_lock_released_when_body_raises(self) -> None:
         with self.assertRaises(ValueError):
             with run_lock(self.path):

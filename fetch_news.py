@@ -21,6 +21,11 @@ from ainews.runlock import RunLockBusy, run_lock
 from ainews.storage.database import Database
 
 
+LOCK_WAIT_SECONDS = 30 * 60
+LOCK_POLL_SECONDS = 10
+EXIT_LOCKED = 75  # EX_TEMPFAIL: another run held the lock; nothing was done
+
+
 def setup_logging(log_path: Path):
     """Set up rotating file handler for pipeline logs."""
     log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -113,6 +118,10 @@ def main():
         "--category", choices=["trusted", "open"],
         help="Only process sources of this category (default: all)",
     )
+    parser.add_argument(
+        "--no-wait", action="store_true",
+        help=f"If another run is in progress, exit {EXIT_LOCKED} at once instead of waiting",
+    )
     args = parser.parse_args()
     category_filter = args.category
 
@@ -125,12 +134,18 @@ def main():
 
     # One run at a time: the */15 trusted cron, the daily open cron, the
     # dashboard's Run button and manual runs would otherwise overlap and
-    # double-pay for scoring.
+    # double-pay for scoring. A trusted run just skips (another comes in 15
+    # minutes); the daily open run and manual runs wait their turn, because
+    # both crons fire at 18:00 and the open run is the day's only pass over
+    # open feeds, search and newsletters.
+    wait = 0 if category_filter == "trusted" or args.no_wait else LOCK_WAIT_SECONDS
     try:
-        with run_lock(data_dir / ".pipeline.lock"):
+        with run_lock(data_dir / ".pipeline.lock", wait_seconds=wait,
+                      poll_seconds=LOCK_POLL_SECONDS):
             _run_pipeline(category_filter, cfg, data_dir, logger)
     except RunLockBusy:
-        logger.warning("Another pipeline run is still in progress; skipping this run.")
+        logger.warning("Another pipeline run is still in progress; this run did not start.")
+        sys.exit(EXIT_LOCKED)
 
 
 def _run_pipeline(category_filter, cfg: dict, data_dir: Path, logger: logging.Logger):
