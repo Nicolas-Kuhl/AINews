@@ -90,10 +90,12 @@ _RSS_BODY = b"""<?xml version="1.0"?>
 
 
 class _FakeResponse:
-    def __init__(self, content: bytes):
+    def __init__(self, content: bytes, url: str = "https://feeds.invalid/rss",
+                 content_type: str = "application/rss+xml"):
         self.content = content
-        self.text = content.decode()
-        self.headers = {"content-type": "application/rss+xml"}
+        self.text = content.decode("utf-8", errors="replace")
+        self.url = url
+        self.headers = {"content-type": content_type}
 
 
 class FetchRssDirectTests(unittest.TestCase):
@@ -116,6 +118,28 @@ class FetchRssDirectTests(unittest.TestCase):
         )
         self.assertEqual(calls, [("https://feeds.invalid/rss", 7)])
         self.assertEqual([i.title for i in items], ["Model launch"])
+
+    def test_relative_entry_links_resolve_against_the_feed_url(self) -> None:
+        body = (b'<?xml version="1.0"?><rss version="2.0"><channel><title>T</title>'
+                b"<item><title>Post</title><link>/blog/post-1</link></item>"
+                b"</channel></rss>")
+        rss_fetcher._fetch_with_retry = lambda url, timeout, headers: _FakeResponse(
+            body, url="https://vendor.example/feed.xml")
+        items = rss_fetcher._fetch_rss_direct(
+            {"name": "Feed", "url": "https://vendor.example/feed.xml"}, timeout=5, max_items=10)
+        self.assertEqual([i.url for i in items], ["https://vendor.example/blog/post-1"])
+
+    def test_charset_from_the_http_header_is_honoured(self) -> None:
+        # KOI8-R: feedparser's no-header fallback (windows-1252) would garble it.
+        title = "Новая модель"
+        body = ('<?xml version="1.0"?><rss version="2.0"><channel><title>T</title>'
+                f"<item><title>{title}</title><link>https://x.example/a</link></item>"
+                "</channel></rss>").encode("koi8-r")
+        rss_fetcher._fetch_with_retry = lambda url, timeout, headers: _FakeResponse(
+            body, content_type="application/rss+xml; charset=koi8-r")
+        items = rss_fetcher._fetch_rss_direct(
+            {"name": "Feed", "url": "https://feeds.invalid/rss"}, timeout=5, max_items=10)
+        self.assertEqual([i.title for i in items], [title])
 
 
 if __name__ == "__main__":

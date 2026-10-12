@@ -118,7 +118,11 @@ def _fetch_rss_direct(feed_config: dict, timeout: int, max_items: int) -> list[R
     url = feed_config["url"]
     try:
         resp = _fetch_with_retry(url, timeout, _HEADERS)
-        feed = feedparser.parse(resp.content)
+        # Pass the HTTP headers and final URL so feedparser can honour a
+        # header-only charset and resolve relative entry links.
+        headers = {k.lower(): v for k, v in resp.headers.items()}
+        headers["content-location"] = str(resp.url)
+        feed = feedparser.parse(resp.content, response_headers=headers)
     except Exception as e:
         print(f"  [RSS]  Error fetching {name}: {e}")
         return []
