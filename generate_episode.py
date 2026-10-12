@@ -17,11 +17,13 @@ Requires ELEVENLABS_API_KEY in the environment (sourced from .env).
 
 import argparse
 import os
+import signal
 import subprocess
 import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 from ainews.runlock import RunLockBusy, run_lock
 
@@ -63,16 +65,46 @@ def _retry_command(date: str) -> str:
     )
 
 
-def _stage(name: str, cmd: "list[str]", date: str) -> bool:
+# Per-stage time limits. Longest seen in production: script 128s, voiceover
+# 75s, render 242s. A stage once hung for months in Playwright (screenshot
+# capture), which with the run lock would block every later episode.
+STAGE_TIMEOUTS = {
+    "script": 15 * 60,
+    "voiceover": 20 * 60,
+    "render + feed": 60 * 60,
+}
+
+
+def _kill_tree(proc: subprocess.Popen) -> None:
+    """Kill a stage and everything it spawned (e.g. a Chromium tree)."""
+    if os.name == "posix":
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    else:
+        proc.kill()
+    proc.wait()
+
+
+def _stage(name: str, cmd: "list[str]", date: str, timeout: Optional[float] = None) -> bool:
     _log(f"--- stage: {name} ---")
     started = time.monotonic()
-    result = subprocess.run(cmd, cwd=PROJECT_ROOT)
+    # Own process group, so a timeout can kill the stage's whole tree.
+    proc = subprocess.Popen(cmd, cwd=PROJECT_ROOT, start_new_session=(os.name == "posix"))
+    try:
+        returncode = proc.wait(timeout=timeout)
+        problem = None if returncode == 0 else f"exited {returncode}"
+    except subprocess.TimeoutExpired:
+        _kill_tree(proc)
+        problem = f"timed out after {timeout:.0f}s and was killed"
     elapsed = time.monotonic() - started
-    if result.returncode != 0:
-        _log(f"FAILED: {name} (exit {result.returncode}, {elapsed:.0f}s)")
+    if problem:
+        _log(f"FAILED: {name} ({problem}, {elapsed:.0f}s)")
+        verb = "timed out" if problem.startswith("timed out") else "FAILED"
         _alert(
-            f"The Daily Prompt: nightly episode FAILED at stage '{name}'",
-            f"Stage '{name}' exited {result.returncode} after {elapsed:.0f}s.\n"
+            f"The Daily Prompt: nightly episode {verb} at stage '{name}'",
+            f"Stage '{name}' {problem} after {elapsed:.0f}s.\n"
             f"Command: {' '.join(cmd)}\n"
             f"Check /opt/ainews/data/episode.log for details.\n"
             f"Retry manually: {_retry_command(date)}",
@@ -123,7 +155,8 @@ def _run_episode(date: str, *, force: bool) -> None:
     if script_json.exists() and not force:
         _log(f"reusing existing script {script_json.name}")
     else:
-        if not _stage("script", [py, "generate_video_script.py", "--edition-date", date], date):
+        if not _stage("script", [py, "generate_video_script.py", "--edition-date", date], date,
+                      timeout=STAGE_TIMEOUTS["script"]):
             sys.exit(1)
         if not script_json.exists():
             _log("no scriptworthy stories today — no episode (this is fine)")
@@ -135,9 +168,11 @@ def _run_episode(date: str, *, force: bool) -> None:
     )
     if voiceover_done and not force:
         _log(f"reusing existing voiceover for {date}")
-    elif not _stage("voiceover", [py, "generate_voiceover.py", "--script", str(script_json)], date):
+    elif not _stage("voiceover", [py, "generate_voiceover.py", "--script", str(script_json)], date,
+                    timeout=STAGE_TIMEOUTS["voiceover"]):
         sys.exit(1)
-    if not _stage("render + feed", [py, "generate_video.py", "--date", date], date):
+    if not _stage("render + feed", [py, "generate_video.py", "--date", date], date,
+                  timeout=STAGE_TIMEOUTS["render + feed"]):
         sys.exit(1)
 
     # Housekeeping: keep 30 days of episodes, 7 days of intermediate audio

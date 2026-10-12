@@ -19,9 +19,14 @@ from ainews.processing.scorer import rescore_fallback_items, score_items
 from ainews.rss_generator import save_rss_feed
 from ainews.runlock import RunLockBusy, run_lock
 from ainews.storage.database import Database
+from ainews.watchdog import start_watchdog
 
 
-LOCK_WAIT_SECONDS = 30 * 60
+# Hard limit for one run (longest seen in production: ~28 min). A hung run is
+# terminated so it can't hold the lock forever; open runs wait a bit longer
+# than that, so even a hung trusted run at 18:00 doesn't cost the daily run.
+MAX_RUN_SECONDS = 45 * 60
+LOCK_WAIT_SECONDS = 50 * 60
 LOCK_POLL_SECONDS = 10
 EXIT_LOCKED = 75  # EX_TEMPFAIL: another run held the lock; nothing was done
 
@@ -142,7 +147,11 @@ def main():
     try:
         with run_lock(data_dir / ".pipeline.lock", wait_seconds=wait,
                       poll_seconds=LOCK_POLL_SECONDS):
-            _run_pipeline(category_filter, cfg, data_dir, logger)
+            watchdog = start_watchdog(MAX_RUN_SECONDS, label="fetch pipeline")
+            try:
+                _run_pipeline(category_filter, cfg, data_dir, logger)
+            finally:
+                watchdog.cancel()
     except RunLockBusy:
         logger.warning("Another pipeline run is still in progress; this run did not start.")
         sys.exit(EXIT_LOCKED)

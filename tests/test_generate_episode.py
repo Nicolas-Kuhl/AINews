@@ -16,9 +16,11 @@ class OrchestratorDateTests(unittest.TestCase):
     def setUp(self) -> None:
         self.root = Path(tempfile.mkdtemp())
         self.cmds: list[list[str]] = []
+        self.timeouts: dict = {}
 
-    def _fake_stage(self, name, cmd, *_):
+    def _fake_stage(self, name, cmd, *_, **kwargs):
         self.cmds.append(cmd)
+        self.timeouts[name] = kwargs.get("timeout")
         if name == "script":
             scripts = self.root / "data" / "video_scripts"
             scripts.mkdir(parents=True, exist_ok=True)
@@ -82,6 +84,54 @@ class OrchestratorDateTests(unittest.TestCase):
         with run_lock(self.root / "data" / ".episode.lock"):
             self._run(["--date", "2026-10-12"])
         self.assertEqual(self.cmds, [])
+
+
+class StageTimeoutTests(unittest.TestCase):
+    def test_every_stage_runs_with_a_time_limit(self) -> None:
+        t = OrchestratorDateTests("test_every_stage_gets_the_same_edition_date")
+        t.setUp()
+        t._run(["--date", "2026-10-12"])
+        self.assertEqual(set(t.timeouts), {"script", "voiceover", "render + feed"})
+        # Longest seen in production: script 128s, voiceover 75s, render 242s.
+        self.assertGreaterEqual(t.timeouts["script"], 600)
+        self.assertGreaterEqual(t.timeouts["voiceover"], 600)
+        self.assertGreaterEqual(t.timeouts["render + feed"], 1800)
+
+    def test_hung_stage_is_killed_and_alerted(self) -> None:
+        import time
+        alerts = []
+        with mock.patch.object(generate_episode, "_alert",
+                               side_effect=lambda subject, msg: alerts.append(subject)):
+            start = time.monotonic()
+            ok = generate_episode._stage(
+                "render + feed", [sys.executable, "-c", "import time; time.sleep(60)"],
+                "2026-10-12", timeout=0.5,
+            )
+        self.assertFalse(ok)
+        self.assertLess(time.monotonic() - start, 10)
+        self.assertEqual(len(alerts), 1)
+        self.assertIn("timed out", alerts[0])
+
+    @unittest.skipIf(sys.platform == "win32", "process groups are POSIX")
+    def test_hung_stage_grandchildren_are_killed_too(self) -> None:
+        """The July hang was a Chromium tree under the render stage; killing
+        only the direct child would orphan it."""
+        import os
+        import time
+        pidfile = Path(tempfile.mkdtemp()) / "grandchild.pid"
+        spawn = "\n".join([
+            "import subprocess, sys, time",
+            "p = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])",
+            f"open({str(pidfile)!r}, 'w').write(str(p.pid))",
+            "time.sleep(60)",
+        ])
+        with mock.patch.object(generate_episode, "_alert"):
+            generate_episode._stage("render + feed", [sys.executable, "-c", spawn],
+                                    "2026-10-12", timeout=1.5)
+        grandchild = int(pidfile.read_text())
+        time.sleep(0.5)
+        with self.assertRaises(ProcessLookupError):
+            os.kill(grandchild, 0)
 
 
 if __name__ == "__main__":
