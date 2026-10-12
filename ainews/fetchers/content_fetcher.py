@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import Optional
 
 import httpx
 import trafilatura
 
 from ainews.models import RawNewsItem
+from ainews.net_safety import is_public_url
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +24,44 @@ _HEADERS = {
 }
 
 
+# Article pages rarely exceed a few hundred KB; stop reading beyond this so a
+# huge or endless response can't exhaust memory.
+MAX_BODY_BYTES = 2_000_000
+_HTML_TYPES = ("text/html", "application/xhtml+xml")
+
+
+class UnsafeURLError(httpx.RequestError):
+    """Refused to fetch a URL that resolves to a non-public address."""
+
+
+async def _guard_request(request: httpx.Request) -> None:
+    # Runs for every hop, so a public URL can't redirect into the VPC or
+    # the instance-metadata endpoint. (URLs come from feeds and from links
+    # Claude extracted out of inbound email.)
+    if not await asyncio.to_thread(is_public_url, str(request.url)):
+        raise UnsafeURLError(f"refusing non-public URL {request.url}", request=request)
+
+
+def _make_client(timeout: int, transport: Optional[httpx.AsyncBaseTransport] = None):
+    return httpx.AsyncClient(
+        timeout=timeout,
+        transport=transport,
+        follow_redirects=True,
+        max_redirects=5,
+        event_hooks={"request": [_guard_request]},
+    )
+
+
+async def _read_capped(resp: httpx.Response, cap: int) -> bytes:
+    chunks, total = [], 0
+    async for chunk in resp.aiter_bytes():
+        chunks.append(chunk)
+        total += len(chunk)
+        if total >= cap:
+            break
+    return b"".join(chunks)[:cap]
+
+
 async def _fetch_one(
     client: httpx.AsyncClient,
     item: RawNewsItem,
@@ -31,19 +71,24 @@ async def _fetch_one(
     """Fetch and extract content for a single item. Modifies item in-place."""
     async with semaphore:
         try:
-            resp = await client.get(item.url, follow_redirects=True, headers=_HEADERS)
-            resp.raise_for_status()
-            html = resp.text
+            async with client.stream("GET", item.url, headers=_HEADERS) as resp:
+                resp.raise_for_status()
+                ctype = resp.headers.get("content-type", "").split(";")[0].strip().lower()
+                if ctype and ctype not in _HTML_TYPES:
+                    logger.debug(f"  [Content] Skipping {ctype} at {item.url}")
+                    return
+                body = await _read_capped(resp, MAX_BODY_BYTES)
+                html = body.decode(resp.charset_encoding or "utf-8", errors="replace")
         except Exception as e:
             logger.debug(f"  [Content] Failed to fetch {item.url}: {e}")
             return
 
         try:
-            text = trafilatura.extract(
+            text = await asyncio.to_thread(
+                trafilatura.extract,
                 html,
                 include_comments=False,
                 include_tables=False,
-                no_fallback=False,
             )
         except Exception as e:
             logger.debug(f"  [Content] Failed to extract {item.url}: {e}")
@@ -61,7 +106,7 @@ async def _fetch_all(
 ) -> None:
     """Fetch content for all items concurrently."""
     semaphore = asyncio.Semaphore(max_concurrent)
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    async with _make_client(timeout) as client:
         tasks = [_fetch_one(client, item, max_length, semaphore) for item in items]
         await asyncio.gather(*tasks)
 

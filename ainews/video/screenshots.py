@@ -15,8 +15,10 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 from urllib.parse import urlparse
+
+from ainews.net_safety import is_public_url
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +47,34 @@ def is_screenshotable(url: str) -> bool:
     except Exception:
         return False
     return parsed.scheme in ("http", "https") and bool(parsed.netloc)
+
+
+def make_route_guard(check: Callable[[str], bool] = is_public_url):
+    """Playwright route handler that blocks requests to non-public hosts.
+
+    Source URLs come from feeds and newsletter emails, so the page (and
+    anything it redirects to or loads) must not reach localhost, the VPC or
+    the instance-metadata endpoint. Decisions are cached per origin so a
+    page's many subresources don't each trigger a DNS lookup.
+    """
+    decisions: "dict[str, bool]" = {}
+
+    def guard(route) -> None:
+        url = route.request.url
+        parsed = urlparse(url)
+        if parsed.scheme in ("data", "blob"):
+            route.continue_()
+            return
+        origin = f"{parsed.scheme}://{parsed.netloc}"
+        if origin not in decisions:
+            decisions[origin] = check(url)
+        if decisions[origin]:
+            route.continue_()
+        else:
+            logger.info("  [Shot] blocked non-public request to %s", origin)
+            route.abort()
+
+    return guard
 
 
 def is_degenerate(mean_brightness: float, stddev: float) -> bool:
@@ -125,6 +155,7 @@ def capture_screenshots(
                         "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"),
             viewport=VIEWPORT, locale="en-US",
         )
+        context.route("**/*", make_route_guard())
         page = context.new_page()
         for key, url in eligible:
             path = out_dir / f"{key}.jpg"

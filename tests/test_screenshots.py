@@ -42,5 +42,57 @@ class DegenerateTests(unittest.TestCase):
         self.assertFalse(is_degenerate(mean_brightness=40.0, stddev=42.0))
 
 
+
+
+class _FakeRoute:
+    def __init__(self, url: str):
+        self.request = type("Req", (), {"url": url})()
+        self.outcome = None
+
+    def abort(self):
+        self.outcome = "abort"
+
+    def continue_(self):
+        self.outcome = "continue"
+
+
+class RouteGuardTests(unittest.TestCase):
+    def _guard(self, public_hosts: set):
+        from urllib.parse import urlparse
+        from ainews.video.screenshots import make_route_guard
+        checked = []
+
+        def check(url):
+            checked.append(url)
+            return urlparse(url).hostname in public_hosts
+
+        return make_route_guard(check), checked
+
+    def test_requests_to_private_hosts_are_aborted(self):
+        guard, _ = self._guard({"news.example.com"})
+        route = _FakeRoute("http://169.254.169.254/latest/meta-data/")
+        guard(route)
+        self.assertEqual(route.outcome, "abort")
+
+    def test_requests_to_public_hosts_continue(self):
+        guard, _ = self._guard({"news.example.com"})
+        route = _FakeRoute("https://news.example.com/story")
+        guard(route)
+        self.assertEqual(route.outcome, "continue")
+
+    def test_inline_data_urls_continue_without_a_lookup(self):
+        guard, checked = self._guard(set())
+        route = _FakeRoute("data:image/png;base64,AAAA")
+        guard(route)
+        self.assertEqual(route.outcome, "continue")
+        self.assertEqual(checked, [])
+
+    def test_host_decisions_are_cached_per_origin(self):
+        guard, checked = self._guard({"cdn.example.com"})
+        for path in ("a.js", "b.css", "c.png"):
+            guard(_FakeRoute(f"https://cdn.example.com/{path}"))
+        self.assertEqual(len(checked), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
