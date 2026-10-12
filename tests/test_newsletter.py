@@ -267,6 +267,17 @@ class RunNewsletterTests(unittest.TestCase):
         self.assertEqual(second_ses.sent, [])
         self.assertEqual(second_client.messages.calls, [])
 
+    def test_failure_output_gives_a_retry_command_pinned_to_the_issue_date(self):
+        """A bare rerun after midnight UTC would compose and send tomorrow's
+        issue early, so the hint must carry --date."""
+        import contextlib
+        import io
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self._run(SendTests._FakeSES(fail={"b@x.com"}))
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        self.assertIn(f"generate_newsletter.py --date {today}", out.getvalue())
+
     def test_rerun_after_partial_failure_sends_the_same_issue_to_the_rest(self):
         first = SendTests._FakeSES(fail={"b@x.com"})
         self.assertEqual(self._run(first), 1)

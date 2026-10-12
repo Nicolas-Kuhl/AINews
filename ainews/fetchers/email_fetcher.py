@@ -161,7 +161,11 @@ def _process_email(
     # Convert HTML to readable text
     email_text = _extract_text(parsed)
     if not email_text or len(email_text.strip()) < 50:
+        # Deterministic: it will never have content, so record it as done
+        # rather than re-downloading it on every run.
         logger.warning(f"  [Email] Empty/short content, skipping: {parsed.subject}")
+        db.mark_email_processed(parsed.message_id, parsed.sender, parsed.subject, 0)
+        _mark_as_read(conn, uid)
         return []
 
     # Cap length to avoid token limits

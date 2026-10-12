@@ -132,6 +132,18 @@ class FetchAllNewslettersTests(unittest.TestCase):
         self.assertFalse(self.db.is_email_processed("<bad@x>"))
         self.assertTrue(self.db.is_email_processed("<good@x>"))
 
+    def test_too_short_email_is_marked_done_instead_of_refetched_daily(self) -> None:
+        short = (b"Message-ID: <short@x>\r\nFrom: Newsletter <news@a.example>\r\n"
+                 b"Subject: Hi\r\nContent-Type: text/plain\r\n\r\ntiny")
+        conn = _FakeImap({'UNSEEN FROM "a.example"': b"1"}, {b"1": short})
+        with mock.patch.object(email_fetcher, "_connect_imap", return_value=conn), \
+             mock.patch.object(email_fetcher, "_extract_stories_with_claude") as extract:
+            items = email_fetcher.fetch_all_newsletters(self.cfg, self.db)
+        self.assertEqual(items, [])
+        extract.assert_not_called()
+        self.assertTrue(self.db.is_email_processed("<short@x>"))
+        self.assertIn(("store", b"1", "+FLAGS", "\\Seen"), conn.commands)
+
 
 class SyntheticUrlTests(unittest.TestCase):
     def test_url_less_stories_from_one_email_stay_distinct_after_normalizing(self) -> None:

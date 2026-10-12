@@ -128,9 +128,12 @@ def run(
     )
     print(f"\n✓ Sent to {len(result['sent'])}/{len(pending)} recipients")
     if result["failed"]:
-        print("  Failures (re-run to retry just these):")
+        print("  Failures:")
         for addr, err in result["failed"].items():
             print(f"    {addr}: {err}")
+        # Pin the date: a bare rerun after midnight UTC would compose and
+        # send tomorrow's issue early.
+        print(f"  Retry just these with: python generate_newsletter.py --date {nl['issue_date']}")
         return 1
     return 0
 

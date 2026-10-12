@@ -98,6 +98,35 @@ class SaveConfigTests(unittest.TestCase):
             save_config(cfg, self.path)
         self.assertEqual(sorted(p.name for p in self.dir.iterdir()), ["config.yaml"])
 
+    def test_bind_mounted_file_falls_back_to_writing_in_place(self) -> None:
+        """os.replace can't swap a single-file Docker bind mount (EBUSY)."""
+        import errno
+        import ainews.config as config_mod
+
+        self._write({"feeds": []})
+        with mock.patch.dict(os.environ, _env(), clear=True):
+            cfg = load_config(self.path)
+            cfg["dedup_threshold"] = 61
+            with mock.patch.object(config_mod.os, "replace",
+                                   side_effect=OSError(errno.EBUSY, "Device or resource busy")):
+                save_config(cfg, self.path)
+        self.assertEqual(self._raw()["dedup_threshold"], 61)
+        self.assertEqual(sorted(p.name for p in self.dir.iterdir()), ["config.yaml"])
+
+    def test_symlinked_config_is_updated_through_the_link(self) -> None:
+        target = self.dir / "real-config.yaml"
+        target.write_text(yaml.safe_dump({"feeds": []}), encoding="utf-8")
+        try:
+            os.symlink(target, self.path)
+        except (OSError, NotImplementedError) as exc:
+            self.skipTest(f"symlinks unavailable: {exc}")
+        with mock.patch.dict(os.environ, _env(), clear=True):
+            cfg = load_config(self.path)
+            cfg["dedup_threshold"] = 62
+            save_config(cfg, self.path)
+        self.assertTrue(self.path.is_symlink())
+        self.assertEqual(yaml.safe_load(target.read_text(encoding="utf-8"))["dedup_threshold"], 62)
+
     @unittest.skipIf(os.name == "nt", "POSIX permissions")
     def test_saved_file_is_owner_only(self) -> None:
         self._write({"feeds": []})

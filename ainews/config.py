@@ -1,5 +1,7 @@
 import copy
+import errno
 import os
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -182,7 +184,8 @@ def save_config(cfg: dict, path: Path = CONFIG_PATH):
     still take effect), and secrets supplied via environment variables are
     never written to disk. The write is atomic and owner-only (0600).
     """
-    path = Path(path)
+    # Write through a symlink to its target rather than replacing the link.
+    path = Path(os.path.realpath(path))
     raw = _read_raw(path) if path.exists() else {}
     base = _apply_defaults(copy.deepcopy(raw))
     skip = {key_path for env_var, key_path in _ENV_SECRETS if os.environ.get(env_var)}
@@ -195,10 +198,16 @@ def save_config(cfg: dict, path: Path = CONFIG_PATH):
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             yaml.dump(out, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
         os.chmod(tmp, 0o600)
-        os.replace(tmp, path)
-    except BaseException:
+        try:
+            os.replace(tmp, path)
+        except OSError as exc:
+            # A single-file bind mount (Docker) can't be renamed over; fall
+            # back to rewriting it in place (not atomic, but it works).
+            if exc.errno not in (errno.EBUSY, errno.EXDEV):
+                raise
+            shutil.copyfile(tmp, path)
+    finally:
         try:
             os.unlink(tmp)
         except OSError:
-            pass
-        raise
+            pass  # already renamed into place
