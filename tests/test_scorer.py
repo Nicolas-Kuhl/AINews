@@ -68,6 +68,14 @@ class ScoreBatchFallbackTests(unittest.TestCase):
         self.assertEqual(out[1].summary, "long 2")
 
 
+    def test_batches_numbered_from_one_fall_back_to_position(self) -> None:
+        # Model ignores the global [Item N] numbering and restarts at 1 each batch.
+        client = _client(_json_reply([_good(1, 7), _good(2, 9)]))
+        out = scorer.score_items(client, "m", [_raw(n) for n in range(1, 5)], batch_size=2)
+        self.assertFalse(any(scorer.needs_rescore(i.score_reasoning) for i in out))
+        self.assertEqual([i.score for i in out], [7, 9, 7, 9])
+
+
 class RescoreFallbackItemsTests(unittest.TestCase):
     def setUp(self) -> None:
         self.db = Database(os.path.join(tempfile.mkdtemp(), "t.db"))
@@ -107,6 +115,24 @@ class RescoreFallbackItemsTests(unittest.TestCase):
         self.assertEqual(row.category, "Research")
         self.assertFalse(scorer.needs_rescore(row.score_reasoning))
         self.assertEqual(self.db.get_embeddings([item_id], "titan"), {})
+
+    def test_failed_rescore_backs_off_exponentially(self) -> None:
+        item_id = self._insert(1, "Auto-scored (API error: overloaded)")
+        client = _client(_failing)
+        now = datetime.now(timezone.utc)
+
+        def due(at):
+            return [r.id for r in self.db.get_items_needing_rescore(
+                prefix=scorer.FALLBACK_REASON_PREFIX, max_age_days=7, limit=50, now=at)]
+
+        scorer.rescore_fallback_items(self.db, client, "m", now=now)
+        self.assertEqual(client.messages.calls, 1)
+        self.assertEqual(due(now + timedelta(minutes=10)), [])        # deferred 15 min
+        self.assertEqual(due(now + timedelta(minutes=16)), [item_id])
+
+        scorer.rescore_fallback_items(self.db, client, "m", now=now + timedelta(minutes=16))
+        self.assertEqual(due(now + timedelta(minutes=16 + 25)), [])   # deferred 30 min
+        self.assertEqual(due(now + timedelta(minutes=16 + 31)), [item_id])
 
     def test_still_failing_rows_stay_marked(self) -> None:
         item_id = self._insert(1, "Auto-scored (API error: overloaded)")

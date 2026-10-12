@@ -1,5 +1,6 @@
 import json
 import re
+from datetime import datetime, timezone
 from typing import Optional
 
 import anthropic
@@ -125,11 +126,16 @@ def _score_batch(
         ]
 
     # Match results to items by the "id" the prompt asks for; position is only
-    # a fallback, since one skipped item would shift every later result.
+    # a fallback, since one skipped item would shift every later result. If
+    # no id falls in this batch's range (the model renumbered from 1), the
+    # ids are meaningless here and position is all we have.
+    batch_ids = range(start_index, start_index + len(items))
     by_id = {
         r["id"]: r for r in results
         if isinstance(r, dict) and isinstance(r.get("id"), int)
     }
+    if not any(i in by_id for i in batch_ids):
+        by_id = {}
 
     processed = []
     for i, item in enumerate(items):
@@ -216,14 +222,18 @@ def rescore_fallback_items(
     content_max: int = 3000,
     max_age_days: int = 7,
     limit: int = 50,
+    now: Optional[datetime] = None,
 ) -> int:
     """Re-score recent rows stored with a fallback score. Returns rows fixed.
 
-    Rows that fail again keep their fallback marker and are retried next run
-    until they age out of ``max_age_days``.
+    Rows that fail again keep their fallback marker and back off
+    exponentially (15 min, 30 min, 1 h, ... up to a day) until they age out
+    of ``max_age_days`` — so an item the model keeps rejecting isn't paid
+    for on every 15-minute run.
     """
+    now = now or datetime.now(timezone.utc)
     rows = db.get_items_needing_rescore(
-        prefix=FALLBACK_REASON_PREFIX, max_age_days=max_age_days, limit=limit
+        prefix=FALLBACK_REASON_PREFIX, max_age_days=max_age_days, limit=limit, now=now
     )
     if not rows:
         return 0
@@ -242,6 +252,7 @@ def rescore_fallback_items(
     fixed = 0
     for row, result in zip(rows, results):
         if needs_rescore(result.score_reasoning):
+            db.defer_rescore(row.id, now)
             continue
         db.update_scoring(row.id, result)
         fixed += 1
