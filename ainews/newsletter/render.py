@@ -92,7 +92,7 @@ def render_html(nl: dict) -> str:
     </td></tr>
     {intro_block}
     {video_block}
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">{rows}</table>
+    <tr><td><table role="presentation" width="100%" cellpadding="0" cellspacing="0">{rows}</table></td></tr>
     <tr><td style="padding:26px 0 0;font-family:{FONT};font-size:12px;color:{DIM};line-height:1.6;">
       You're getting this because you asked to. <a href="{site}" style="color:{COOL};">{site}</a><br>
       To stop, reply with “unsubscribe”.
