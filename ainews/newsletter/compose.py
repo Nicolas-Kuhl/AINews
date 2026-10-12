@@ -76,7 +76,8 @@ def compose_newsletter(
 ) -> Optional[dict]:
     """Build the newsletter dict for the day, or None if nothing qualifies."""
     log = logger_ or logger
-    exclude = previously_covered_urls(newsletter_dir)
+    issue_date = on_date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    exclude = previously_covered_urls(newsletter_dir, exclude_stem=issue_date)
     pairs = select_stories(
         db, hours=hours, catchup_hours=catchup_hours,
         catchup_min_score=catchup_min_score, min_score=min_score,
@@ -96,8 +97,6 @@ def compose_newsletter(
     except Exception as exc:  # noqa: BLE001
         log.warning("Newsletter intro generation failed (non-fatal): %s", exc)
         intro = ""
-
-    issue_date = on_date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     # Link the day's episode + borrow its title for the subject, if rendered.
     video_title = None
@@ -124,6 +123,19 @@ def compose_newsletter(
             "story_urls": [s["url"] for s in stories],
         },
     }
+
+
+def load_archived_issue(newsletter_dir: Path, issue_date: str) -> Optional[dict]:
+    """The issue already archived for ``issue_date``, if any."""
+    path = Path(newsletter_dir) / f"{issue_date}.json"
+    if not path.exists():
+        return None
+    try:
+        with open(path, encoding="utf-8") as f:
+            issue = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return None
+    return issue if isinstance(issue, dict) and issue.get("stories") else None
 
 
 def write_newsletter_json(newsletter: dict, newsletter_dir: Path) -> Path:

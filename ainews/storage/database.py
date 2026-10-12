@@ -211,6 +211,16 @@ class Database:
             self.conn.commit()
         except sqlite3.OperationalError:
             pass
+        # Migrate: rescore backoff for items stored with a fallback score
+        for ddl in (
+            "ALTER TABLE news_items ADD COLUMN rescore_attempts INTEGER DEFAULT 0",
+            "ALTER TABLE news_items ADD COLUMN rescore_after TEXT DEFAULT NULL",
+        ):
+            try:
+                self.conn.execute(ddl)
+                self.conn.commit()
+            except sqlite3.OperationalError:
+                pass  # Column already exists
         # Add index on processed_at for fast "last 24 hours" queries
         self.conn.execute(SCHEMA_PROCESSED_AT_INDEX)
         # Create feed_scans table for per-feed scan interval tracking
@@ -333,6 +343,58 @@ class Database:
         )
         self.conn.commit()
         return cursor.lastrowid
+
+    def get_items_needing_rescore(
+        self, *, prefix: str, max_age_days: int, limit: int,
+        now: Optional[datetime] = None,
+    ) -> list[ProcessedNewsItem]:
+        """Recent fallback-scored rows that are due for another attempt."""
+        now = now or datetime.now(timezone.utc)
+        cutoff = (now - timedelta(days=max_age_days)).isoformat()
+        rows = self.conn.execute(
+            """SELECT * FROM news_items
+               WHERE substr(score_reasoning, 1, ?) = ? AND processed_at >= ?
+                 AND (rescore_after IS NULL OR rescore_after <= ?)
+               ORDER BY processed_at DESC LIMIT ?""",
+            (len(prefix), prefix, cutoff, now.isoformat(), limit),
+        ).fetchall()
+        return [self._row_to_item(r) for r in rows]
+
+    def defer_rescore(self, item_id: int, now: Optional[datetime] = None) -> None:
+        """Back off a row whose rescore failed: 15 min, 30 min, 1 h, ... (max 1 day)."""
+        now = now or datetime.now(timezone.utc)
+        row = self.conn.execute(
+            "SELECT rescore_attempts FROM news_items WHERE id = ?", (item_id,)
+        ).fetchone()
+        attempts = (row["rescore_attempts"] or 0) if row else 0
+        delay = min(timedelta(minutes=15 * 2 ** attempts), timedelta(days=1))
+        self.conn.execute(
+            "UPDATE news_items SET rescore_attempts = ?, rescore_after = ? WHERE id = ?",
+            (attempts + 1, (now + delay).isoformat(), item_id),
+        )
+        self.conn.commit()
+
+    def update_scoring(self, item_id: int, item: ProcessedNewsItem) -> None:
+        """Overwrite the Claude-written fields of an existing row (rescore).
+
+        Drops the row's embedding — it was computed from the fallback text —
+        so the clusterer re-embeds it from the new summary.
+        """
+        self.conn.execute(
+            """UPDATE news_items
+               SET summary = ?, short_summary = ?, score = ?, score_reasoning = ?,
+                   learning_objectives = ?, category = ?
+               WHERE id = ?""",
+            (item.summary, item.short_summary, item.score, item.score_reasoning,
+             item.learning_objectives, item.category, item_id),
+        )
+        self.conn.execute("DELETE FROM item_embeddings WHERE item_id = ?", (item_id,))
+        self.conn.commit()
+        row = self.conn.execute(
+            "SELECT group_id FROM news_items WHERE id = ?", (item_id,)
+        ).fetchone()
+        if row and row["group_id"] is not None:
+            self.recompute_group_primary(row["group_id"])
 
     def update_short_summary(self, item_id: int, short_summary: str) -> None:
         self.conn.execute(

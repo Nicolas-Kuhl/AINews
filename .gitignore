@@ -4,7 +4,6 @@ __pycache__/
 *.egg-info/
 dist/
 build/
-!frontend/dist/
 
 # Virtual environment
 .venv/
@@ -13,15 +12,14 @@ venv/
 env/
 ENV/
 
-# Data
-data/*.db
-data/*.log
-data/*.xml
-data/.last_run
+# Data (runtime output only: DB, logs, feeds, episodes, newsletters, backups)
+data/
 
 # Config with secrets
 config.yaml
 auth_config.yaml
+.env
+.env.*
 
 # IDE
 .vscode/

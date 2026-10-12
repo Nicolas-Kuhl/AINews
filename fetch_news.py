@@ -15,9 +15,15 @@ from ainews.fetchers.content_fetcher import fetch_content_for_items
 from ainews.fetchers.rss_fetcher import fetch_all_feeds
 from ainews.fetchers.web_searcher import search_all_queries
 from ainews.processing.deduplicator import deduplicate
-from ainews.processing.scorer import score_items
+from ainews.processing.scorer import rescore_fallback_items, score_items
 from ainews.rss_generator import save_rss_feed
+from ainews.runlock import RunLockBusy, run_lock
 from ainews.storage.database import Database
+
+
+LOCK_WAIT_SECONDS = 30 * 60
+LOCK_POLL_SECONDS = 10
+EXIT_LOCKED = 75  # EX_TEMPFAIL: another run held the lock; nothing was done
 
 
 def setup_logging(log_path: Path):
@@ -112,6 +118,10 @@ def main():
         "--category", choices=["trusted", "open"],
         help="Only process sources of this category (default: all)",
     )
+    parser.add_argument(
+        "--no-wait", action="store_true",
+        help=f"If another run is in progress, exit {EXIT_LOCKED} at once instead of waiting",
+    )
     args = parser.parse_args()
     category_filter = args.category
 
@@ -122,6 +132,23 @@ def main():
     # Set up logging with rotation
     logger = setup_logging(data_dir / "pipeline.log")
 
+    # One run at a time: the */15 trusted cron, the daily open cron, the
+    # dashboard's Run button and manual runs would otherwise overlap and
+    # double-pay for scoring. A trusted run just skips (another comes in 15
+    # minutes); the daily open run and manual runs wait their turn, because
+    # both crons fire at 18:00 and the open run is the day's only pass over
+    # open feeds, search and newsletters.
+    wait = 0 if category_filter == "trusted" or args.no_wait else LOCK_WAIT_SECONDS
+    try:
+        with run_lock(data_dir / ".pipeline.lock", wait_seconds=wait,
+                      poll_seconds=LOCK_POLL_SECONDS):
+            _run_pipeline(category_filter, cfg, data_dir, logger)
+    except RunLockBusy:
+        logger.warning("Another pipeline run is still in progress; this run did not start.")
+        sys.exit(EXIT_LOCKED)
+
+
+def _run_pipeline(category_filter, cfg: dict, data_dir: Path, logger: logging.Logger):
     start_time = datetime.now()
     label = f" ({category_filter} only)" if category_filter else ""
     logger.info("\n" + "=" * 60)
@@ -225,6 +252,7 @@ def main():
     logger.info(f"  New unique items: {len(new_items)}")
 
     if not new_items:
+        _rescore_fallbacks(db, anthropic.Anthropic(api_key=api_key), cfg, logger)
         logger.info("\nNo new items to process. Generating RSS feed...")
         # Still generate RSS feed even if no new items
         _generate_rss_feed(db, cfg, logger)
@@ -256,9 +284,10 @@ def main():
         )
         logger.info(f"  Got content for {content_count}/{len(new_items)} items")
 
-    # 6. Score with Claude
-    logger.info(f"\n[6/8] Scoring {len(new_items)} items with Claude ({cfg['model']})...")
+    # 6. Score with Claude (first retry earlier runs' failed scores)
     client = anthropic.Anthropic(api_key=api_key)
+    _rescore_fallbacks(db, client, cfg, logger)
+    logger.info(f"\n[6/8] Scoring {len(new_items)} items with Claude ({cfg['model']})...")
     processed = score_items(
         client, cfg["model"], new_items,
         batch_size=cfg.get("scoring_batch_size", 10),
@@ -278,6 +307,7 @@ def main():
     # Centroid + time-window clustering: same-event coverage merges, distinct
     # events stay apart, and clusters cannot chain into topic mega-groups.
     logger.info("\n[7/8] Clustering stories (embeddings + borderline LLM judge)...")
+    cluster_count = 0
     try:
         from ainews.processing.clusterer import cluster_recent_items, make_llm_judge
         ecfg = cfg.get("embeddings", {})
@@ -324,7 +354,7 @@ def main():
     logger.info(f"  Fetched:     {len(combined)} total items")
     logger.info(f"  New:         {len(new_items)} after dedup")
     logger.info(f"  Stored:      {stored} items")
-    logger.info(f"  Groups:      {group_count}")
+    logger.info(f"  Clusters:    {cluster_count} touched")
     logger.info(f"  RSS feed:    {rss_count} items (score 8+)")
     logger.info("=" * 60)
     logger.info("\nRun 'streamlit run dashboard.py' to view results.")
@@ -332,6 +362,22 @@ def main():
 
     # Write timestamp for dashboard
     write_last_run_timestamp(data_dir / ".last_run")
+
+
+def _rescore_fallbacks(db, client, cfg, logger):
+    """Re-score recent items stored with a fallback score after an API error."""
+    try:
+        fixed = rescore_fallback_items(
+            db, client, cfg["model"],
+            batch_size=cfg.get("scoring_batch_size", 10),
+            scoring_prompt=cfg.get("scoring_prompt"),
+            categories=cfg.get("categories"),
+            content_max=cfg.get("content_score_chars", 3000),
+        )
+        if fixed:
+            logger.info(f"  Re-scored {fixed} items that previously failed to score")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"  Re-scoring failed (non-fatal): {exc}")
 
 
 def _generate_rss_feed(db, cfg, logger):

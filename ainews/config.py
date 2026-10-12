@@ -1,4 +1,8 @@
+import copy
+import errno
 import os
+import shutil
+import tempfile
 from pathlib import Path
 
 import yaml
@@ -6,17 +10,41 @@ import yaml
 
 CONFIG_PATH = Path(__file__).parent.parent / "config.yaml"
 
+# Secrets that may come from the environment instead of config.yaml:
+# (env var, key path inside cfg). Env values win on load and are never
+# written back to disk by save_config.
+_ENV_SECRETS = (
+    ("ANTHROPIC_API_KEY", ("anthropic_api_key",)),
+    ("ELEVENLABS_API_KEY", ("tts", "api_key")),
+    ("AINEWS_EMAIL_PASSWORD", ("newsletters", "password")),
+)
+
+
+def _read_raw(path: Path) -> dict:
+    """The file's own contents, without defaults or env overrides."""
+    with open(path, encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
+
+
+def _apply_env_secrets(cfg: dict) -> None:
+    for env_var, key_path in _ENV_SECRETS:
+        value = os.environ.get(env_var)
+        if value:
+            target = cfg
+            for key in key_path[:-1]:
+                target = target.setdefault(key, {})
+            target[key_path[-1]] = value
+
 
 def load_config(path: Path = CONFIG_PATH) -> dict:
     """Load and validate config.yaml, with env var overrides."""
-    with open(path) as f:
-        cfg = yaml.safe_load(f)
+    cfg = _apply_defaults(_read_raw(path))
+    _apply_env_secrets(cfg)
+    return cfg
 
-    # Env var takes precedence for API key
-    env_key = os.environ.get("ANTHROPIC_API_KEY")
-    if env_key:
-        cfg["anthropic_api_key"] = env_key
 
+def _apply_defaults(cfg: dict) -> dict:
+    """Fill code defaults and normalize legacy keys (mutates and returns cfg)."""
     # Resolve db_path relative to project root
     project_root = Path(__file__).parent.parent
     cfg["db_path"] = str(project_root / cfg.get("db_path", "data/ainews.db"))
@@ -61,9 +89,6 @@ def load_config(path: Path = CONFIG_PATH) -> dict:
     tts.setdefault("polly_voice", "Olivia")  # en-AU generative (fallback)
     tts.setdefault("polly_engine", "generative")
     tts.setdefault("region", "us-east-1")
-    env_el_key = os.environ.get("ELEVENLABS_API_KEY")
-    if env_el_key:
-        tts["api_key"] = env_el_key
 
     # Video render defaults (Stage 3). "lambda" renders distributed on
     # Remotion Lambda (~2-3 min/episode); "local" renders on this machine.
@@ -103,10 +128,6 @@ def load_config(path: Path = CONFIG_PATH) -> dict:
     nl.setdefault("imap_port", 993)
     nl.setdefault("max_emails_per_run", 50)
     nl.setdefault("senders", [])
-    # Env var override for email password (avoid plaintext in config on server)
-    env_pw = os.environ.get("AINEWS_EMAIL_PASSWORD")
-    if env_pw:
-        nl["password"] = env_pw
 
     # Normalize feeds: ensure category field, migrate from scan_interval if needed
     for feed in cfg["feeds"]:
@@ -134,15 +155,59 @@ def load_config(path: Path = CONFIG_PATH) -> dict:
     return cfg
 
 
+def _merge_changes(out: dict, base: dict, new: dict, skip: set, path: tuple = ()) -> None:
+    """Apply to ``out`` (the file's raw dict) only what differs between
+    ``new`` (the caller's edited cfg) and ``base`` (what load_config would
+    produce from the file, minus env). Keys under ``skip`` are left alone."""
+    for key, value in new.items():
+        key_path = path + (key,)
+        if key_path in skip:
+            continue
+        base_value = base.get(key)
+        if isinstance(value, dict) and isinstance(base_value, dict):
+            sub_out = out.get(key) if isinstance(out.get(key), dict) else {}
+            _merge_changes(sub_out, base_value, value, skip, key_path)
+            if sub_out or key in out:
+                out[key] = sub_out
+        elif key not in base or base_value != value:
+            out[key] = copy.deepcopy(value)
+    for key in list(out):
+        if key in base and key not in new and path + (key,) not in skip:
+            del out[key]
+
+
 def save_config(cfg: dict, path: Path = CONFIG_PATH):
-    """Write config dict back to config.yaml."""
-    # Work on a copy to avoid mutating the caller's dict
-    to_save = dict(cfg)
-    # Restore relative db_path for the file
-    project_root = Path(__file__).parent.parent
+    """Persist the caller's edits to config.yaml.
+
+    Writes only what the caller changed relative to the file: code defaults
+    filled in by load_config stay out of the file (so later default changes
+    still take effect), and secrets supplied via environment variables are
+    never written to disk. The write is atomic and owner-only (0600).
+    """
+    # Write through a symlink to its target rather than replacing the link.
+    path = Path(os.path.realpath(path))
+    raw = _read_raw(path) if path.exists() else {}
+    base = _apply_defaults(copy.deepcopy(raw))
+    skip = {key_path for env_var, key_path in _ENV_SECRETS if os.environ.get(env_var)}
+
+    out = copy.deepcopy(raw)
+    _merge_changes(out, base, cfg, skip)
+
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".config.", suffix=".tmp")
     try:
-        to_save["db_path"] = str(Path(to_save["db_path"]).relative_to(project_root))
-    except (ValueError, KeyError):
-        pass
-    with open(path, "w") as f:
-        yaml.dump(to_save, f, default_flow_style=False, sort_keys=False)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            yaml.dump(out, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+        os.chmod(tmp, 0o600)
+        try:
+            os.replace(tmp, path)
+        except OSError as exc:
+            # A single-file bind mount (Docker) can't be renamed over; fall
+            # back to rewriting it in place (not atomic, but it works).
+            if exc.errno not in (errno.EBUSY, errno.EXDEV):
+                raise
+            shutil.copyfile(tmp, path)
+    finally:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass  # already renamed into place

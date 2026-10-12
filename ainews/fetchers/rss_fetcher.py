@@ -69,29 +69,31 @@ def fetch_all_feeds(
             total_timeout = timeout * 4 + 30
         workers = max(1, min(max_workers, len(direct_feeds)))
         print(f"  [Feed] Fetching {len(direct_feeds)} feeds (up to {workers} at a time)...")
-        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
-            future_to_feed = {
-                executor.submit(_fetch_one_feed, fc, timeout, max_items): fc
-                for fc in direct_feeds
-            }
-            try:
-                for future in concurrent.futures.as_completed(
-                    future_to_feed, timeout=total_timeout
-                ):
-                    fc = future_to_feed[future]
-                    try:
-                        all_items.extend(future.result())
-                    except Exception as e:
-                        print(f"  [Feed] Error fetching {fc['name']}: {e}")
-            except concurrent.futures.TimeoutError:
-                unfinished = [fc["name"] for f, fc in future_to_feed.items() if not f.done()]
-                print(
-                    f"  [Feed] Global deadline {total_timeout}s hit; "
-                    f"skipping {len(unfinished)} unfinished feed(s): "
-                    f"{', '.join(unfinished[:5])}{'...' if len(unfinished) > 5 else ''}"
-                )
-                for f in future_to_feed:
-                    f.cancel()
+        # Not a `with` block: its exit joins every worker, so one hung feed
+        # would hold the run past the deadline. Shut down without waiting.
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=workers)
+        future_to_feed = {
+            executor.submit(_fetch_one_feed, fc, timeout, max_items): fc
+            for fc in direct_feeds
+        }
+        try:
+            for future in concurrent.futures.as_completed(
+                future_to_feed, timeout=total_timeout
+            ):
+                fc = future_to_feed[future]
+                try:
+                    all_items.extend(future.result())
+                except Exception as e:
+                    print(f"  [Feed] Error fetching {fc['name']}: {e}")
+        except concurrent.futures.TimeoutError:
+            unfinished = [fc["name"] for f, fc in future_to_feed.items() if not f.done()]
+            print(
+                f"  [Feed] Global deadline {total_timeout}s hit; "
+                f"skipping {len(unfinished)} unfinished feed(s): "
+                f"{', '.join(unfinished[:5])}{'...' if len(unfinished) > 5 else ''}"
+            )
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
 
     # Process all web-type feeds together with a single browser instance
     if web_feeds:
@@ -106,11 +108,21 @@ def fetch_all_feeds(
 # ---------------------------------------------------------------------------
 
 def _fetch_rss_direct(feed_config: dict, timeout: int, max_items: int) -> list[RawNewsItem]:
-    """Fetch a known RSS/Atom feed URL using feedparser."""
+    """Fetch a known RSS/Atom feed URL and parse it with feedparser.
+
+    Fetched with httpx rather than ``feedparser.parse(url)``: feedparser's own
+    urllib client has no timeout, so a server that accepts the connection and
+    stalls would hang the whole run.
+    """
     name = feed_config["name"]
     url = feed_config["url"]
     try:
-        feed = feedparser.parse(url, request_headers={"User-Agent": _HEADERS["User-Agent"]})
+        resp = _fetch_with_retry(url, timeout, _HEADERS)
+        # Pass the HTTP headers and final URL so feedparser can honour a
+        # header-only charset and resolve relative entry links.
+        headers = {k.lower(): v for k, v in resp.headers.items()}
+        headers["content-location"] = str(resp.url)
+        feed = feedparser.parse(resp.content, response_headers=headers)
     except Exception as e:
         print(f"  [RSS]  Error fetching {name}: {e}")
         return []

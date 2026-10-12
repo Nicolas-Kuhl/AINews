@@ -15,8 +15,10 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Optional
-from urllib.parse import urlparse
+from typing import Callable, Optional
+from urllib.parse import urljoin, urlparse
+
+from ainews.net_safety import is_public_url
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +47,51 @@ def is_screenshotable(url: str) -> bool:
     except Exception:
         return False
     return parsed.scheme in ("http", "https") and bool(parsed.netloc)
+
+
+def make_route_guard(check: Callable[[str], bool] = is_public_url):
+    """Playwright route handler that blocks requests to non-public hosts.
+
+    Source URLs come from feeds and newsletter emails, so the page (and
+    anything it redirects to or loads) must not reach localhost, the VPC or
+    the instance-metadata endpoint. Route handlers never see redirect hops
+    the browser follows itself, so allowed requests are fetched here with
+    redirects disabled and each Location is checked before the browser is
+    handed the 3xx (its follow-up request comes back through this guard).
+    Decisions are cached per origin so a page's many subresources don't
+    each trigger a DNS lookup.
+    """
+    decisions: "dict[str, bool]" = {}
+
+    def allowed(url: str) -> bool:
+        parsed = urlparse(url)
+        origin = f"{parsed.scheme}://{parsed.netloc}"
+        if origin not in decisions:
+            decisions[origin] = check(url)
+        if not decisions[origin]:
+            logger.info("  [Shot] blocked non-public request to %s", origin)
+        return decisions[origin]
+
+    def guard(route) -> None:
+        url = route.request.url
+        if urlparse(url).scheme in ("data", "blob"):
+            route.continue_()
+            return
+        if not allowed(url):
+            route.abort()
+            return
+        try:
+            response = route.fetch(max_redirects=0)
+        except Exception:  # noqa: BLE001 — network error: let the page fail
+            route.abort()
+            return
+        location = response.headers.get("location")
+        if 300 <= response.status < 400 and location and not allowed(urljoin(url, location)):
+            route.abort()
+            return
+        route.fulfill(response=response)
+
+    return guard
 
 
 def is_degenerate(mean_brightness: float, stddev: float) -> bool:
@@ -124,7 +171,9 @@ def capture_screenshots(
             user_agent=("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
                         "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"),
             viewport=VIEWPORT, locale="en-US",
+            service_workers="block",  # SW fetches would bypass the route guard
         )
+        context.route("**/*", make_route_guard())
         page = context.new_page()
         for key, url in eligible:
             path = out_dir / f"{key}.jpg"

@@ -11,9 +11,27 @@ from __future__ import annotations
 import logging
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from typing import Optional
+from pathlib import Path
+from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
+
+
+def sent_ledger_path(newsletter_dir: Path, issue_date: str) -> Path:
+    """Append-only record of recipients who already received an issue."""
+    return Path(newsletter_dir) / f"{issue_date}.sent"
+
+
+def load_sent(ledger: Path) -> "set[str]":
+    if not ledger.exists():
+        return set()
+    return {line.strip() for line in ledger.read_text(encoding="utf-8").splitlines() if line.strip()}
+
+
+def record_sent(ledger: Path, address: str) -> None:
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    with open(ledger, "a", encoding="utf-8") as f:
+        f.write(address + "\n")
 
 
 def _build_message(subject: str, html: str, text: str, from_addr: str,
@@ -40,9 +58,14 @@ def send_newsletter(
     region: str = "us-west-1",
     unsubscribe: Optional[str] = None,
     ses_client=None,
+    on_sent: Optional[Callable[[str], None]] = None,
     logger_: Optional[logging.Logger] = None,
 ) -> dict:
-    """Send to each recipient. Returns {sent: [...], failed: {addr: error}}."""
+    """Send to each recipient. Returns {sent: [...], failed: {addr: error}}.
+
+    ``on_sent(addr)`` runs right after each successful send, so a crash
+    mid-list still leaves an accurate record of who already has the issue.
+    """
     log = logger_ or logger
     if ses_client is None:
         import boto3
@@ -59,6 +82,8 @@ def send_newsletter(
             )
             sent.append(to_addr)
             log.info("Newsletter sent to %s", to_addr)
+            if on_sent:
+                on_sent(to_addr)
         except Exception as exc:  # noqa: BLE001
             failed[to_addr] = str(exc)
             log.warning("Newsletter send failed for %s: %s", to_addr, exc)

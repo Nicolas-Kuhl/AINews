@@ -13,10 +13,8 @@ venv/
 env/
 ENV/
 
-# Data and logs
-data/*.db
-data/*.log
-data/*.xml
+# Data and logs (runtime output)
+data/
 
 # IDE
 .vscode/
@@ -37,5 +35,16 @@ deployment/
 .dockerignore
 docker-compose.yml
 
-# Config (will be mounted)
+# Config and secrets (mounted / injected at runtime, never baked in)
 config.yaml
+auth_config.yaml
+.env
+.env.*
+
+# Build inputs and outputs that don't belong in the image
+frontend/node_modules/
+renderer/node_modules/
+renderer/public/audio/
+renderer/public/screenshots/
+renderer/public/props-*.json
+renderer/out/

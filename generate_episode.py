@@ -23,6 +23,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from ainews.runlock import RunLockBusy, run_lock
+
 PROJECT_ROOT = Path(__file__).parent
 
 
@@ -54,7 +56,14 @@ def _alert(subject: str, message: str) -> None:
         _log(f"WARNING: could not send alert: {exc}")
 
 
-def _stage(name: str, cmd: "list[str]") -> bool:
+def _retry_command(date: str) -> str:
+    return (
+        "cd /opt/ainews && set -a && . ./.env && set +a && "
+        f"venv/bin/python generate_episode.py --date {date}"
+    )
+
+
+def _stage(name: str, cmd: "list[str]", date: str) -> bool:
     _log(f"--- stage: {name} ---")
     started = time.monotonic()
     result = subprocess.run(cmd, cwd=PROJECT_ROOT)
@@ -66,8 +75,7 @@ def _stage(name: str, cmd: "list[str]") -> bool:
             f"Stage '{name}' exited {result.returncode} after {elapsed:.0f}s.\n"
             f"Command: {' '.join(cmd)}\n"
             f"Check /opt/ainews/data/episode.log for details.\n"
-            f"Retry manually: cd /opt/ainews && set -a && . ./.env && set +a && "
-            f"venv/bin/python generate_episode.py",
+            f"Retry manually: {_retry_command(date)}",
         )
         return False
     _log(f"ok: {name} ({elapsed:.0f}s)")
@@ -78,9 +86,23 @@ def main():
     parser = argparse.ArgumentParser(description="Run the full nightly episode pipeline")
     parser.add_argument("--force", action="store_true",
                         help="Regenerate even if today's episode already exists")
+    parser.add_argument("--date", type=str, metavar="YYYY-MM-DD",
+                        help="Edition date (default: today UTC). Use the date from a "
+                             "failure alert to finish that night's episode.")
     args = parser.parse_args()
 
-    date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    # Fixed once and passed to every stage: each stage computing "today" on
+    # its own meant a retry after midnight UTC built tomorrow's episode (and
+    # tomorrow's cron then skipped it as "already rendered").
+    date = args.date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    try:
+        with run_lock(PROJECT_ROOT / "data" / ".episode.lock"):
+            _run_episode(date, force=args.force)
+    except RunLockBusy:
+        _log("another episode run is still in progress — skipping")
+
+
+def _run_episode(date: str, *, force: bool) -> None:
     py = sys.executable
     out_mp4 = PROJECT_ROOT / "data" / "videos" / f"{date}.mp4"
     script_json = PROJECT_ROOT / "data" / "video_scripts" / f"{date}.json"
@@ -91,19 +113,31 @@ def main():
     # missing script means a regeneration was requested (delete the script
     # to re-run with fresh stories); a missing mp4 means a prior run failed
     # mid-pipeline — both should run.
-    if out_mp4.exists() and script_json.exists() and not args.force:
+    if out_mp4.exists() and script_json.exists() and not force:
         _log(f"episode already rendered ({out_mp4.name}) — nothing to do (use --force to redo)")
         return
 
-    if not _stage("script", [py, "generate_video_script.py"]):
-        sys.exit(1)
-    if not script_json.exists():
-        _log("no scriptworthy stories today — no episode (this is fine)")
-        return
+    # A retry resumes where the last run failed: a finished stage's output is
+    # reused rather than paid for again (Claude for the script, ElevenLabs
+    # for the voiceover). --force regenerates everything.
+    if script_json.exists() and not force:
+        _log(f"reusing existing script {script_json.name}")
+    else:
+        if not _stage("script", [py, "generate_video_script.py", "--edition-date", date], date):
+            sys.exit(1)
+        if not script_json.exists():
+            _log("no scriptworthy stories today — no episode (this is fine)")
+            return
 
-    if not _stage("voiceover", [py, "generate_voiceover.py"]):
+    manifest = PROJECT_ROOT / "data" / "video_audio" / date / "manifest.json"
+    voiceover_done = (
+        manifest.exists() and manifest.stat().st_mtime >= script_json.stat().st_mtime
+    )
+    if voiceover_done and not force:
+        _log(f"reusing existing voiceover for {date}")
+    elif not _stage("voiceover", [py, "generate_voiceover.py", "--script", str(script_json)], date):
         sys.exit(1)
-    if not _stage("render + feed", [py, "generate_video.py"]):
+    if not _stage("render + feed", [py, "generate_video.py", "--date", date], date):
         sys.exit(1)
 
     # Housekeeping: keep 30 days of episodes, 7 days of intermediate audio

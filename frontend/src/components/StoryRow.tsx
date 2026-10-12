@@ -91,7 +91,7 @@ export function StoryRow({
             {story.related.map((r, idx) => (
               <a
                 key={`${r.url}-${idx}`}
-                href={r.url}
+                href={r.url || undefined}
                 target="_blank"
                 rel="noreferrer"
                 className="row-source-link"

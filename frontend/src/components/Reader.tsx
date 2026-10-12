@@ -123,7 +123,7 @@ export function Reader({
 
         <a
           className="reader-byline reader-byline-link"
-          href={story.url}
+          href={story.url || undefined}
           target="_blank"
           rel="noreferrer"
           aria-label={`Open original story from ${story.source_meta.short}`}
@@ -213,7 +213,7 @@ export function Reader({
                 <a
                   key={idx}
                   className="reader-related-item"
-                  href={r.url}
+                  href={r.url || undefined}
                   target="_blank"
                   rel="noreferrer"
                 >

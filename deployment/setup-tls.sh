@@ -87,11 +87,16 @@ server {
         proxy_read_timeout 86400;
     }
 
+    # Public RSS: serve ONLY the generated top-level feed files. A plain
+    # `alias /opt/ainews/data` exposed the whole data dir (ainews.db,
+    # pipeline.log, backups/) to anyone who guessed a file name.
+    location ~ ^/rss/([A-Za-z0-9_-]+\.xml)$ {
+        alias /opt/ainews/data/$1;
+        types { }
+        default_type "application/rss+xml; charset=utf-8";
+    }
     location /rss {
-        alias /opt/ainews/data;
-        location ~ \.xml$ {
-            add_header Content-Type application/rss+xml;
-        }
+        return 404;
     }
 }
 EOF

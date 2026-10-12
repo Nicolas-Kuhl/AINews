@@ -3,10 +3,12 @@
 import email
 import email.utils
 from email.header import decode_header
+import hashlib
 import imaplib
 import json
 import logging
 import re
+import ssl
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
@@ -97,8 +99,8 @@ def fetch_all_newsletters(cfg: dict, db: Database) -> list[RawNewsItem]:
     client = anthropic.Anthropic(api_key=cfg.get("anthropic_api_key", ""))
 
     try:
-        emails = _fetch_unread_emails(conn, max_emails)
-        logger.info(f"  [Email] Found {len(emails)} unread emails")
+        emails = _fetch_unread_emails(conn, max_emails, _sender_search_terms(senders))
+        logger.info(f"  [Email] Found {len(emails)} unread newsletter emails")
 
         # Build sender lookup: address -> name
         sender_map = {}
@@ -108,54 +110,19 @@ def fetch_all_newsletters(cfg: dict, db: Database) -> list[RawNewsItem]:
                 sender_map[addr] = s.get("name", addr)
 
         for uid, raw_bytes in emails:
-            parsed = _parse_email(raw_bytes)
-            if not parsed:
-                continue
-
-            # Check if already processed (idempotency)
-            if db.is_email_processed(parsed.message_id):
-                logger.info(f"  [Email] Skipping already processed: {parsed.subject}")
-                continue
-
-            # Filter to known senders
-            newsletter_name = _match_sender(parsed.sender, sender_map)
-            if not newsletter_name:
-                continue
-
-            logger.info(f"  [Email] Processing: {parsed.subject} (from {newsletter_name})")
-
-            # Convert HTML to readable text
-            email_text = _extract_text(parsed)
-            if not email_text or len(email_text.strip()) < 50:
-                logger.warning(f"  [Email] Empty/short content, skipping: {parsed.subject}")
-                continue
-
-            # Cap length to avoid token limits
-            if len(email_text) > 30000:
-                email_text = email_text[:30000] + "\n\n[Content truncated]"
-
-            # Extract stories with Claude
+            # One malformed email or odd model response must not abort the
+            # whole daily run; it stays unread and unprocessed for a retry.
             try:
-                stories = _extract_stories_with_claude(
-                    client, model, email_text, newsletter_name, parsed.subject
+                items = _process_email(
+                    conn, db, client, model, uid, raw_bytes, sender_map
                 )
-            except Exception as e:
-                logger.error(f"  [Email] Claude extraction failed for '{parsed.subject}': {e}")
-                continue  # Don't mark as read — retry next run
-
-            # Convert to RawNewsItems
-            items = _stories_to_raw_items(
-                stories, newsletter_name, parsed.message_id, parsed.date
-            )
+            except Exception as e:  # noqa: BLE001
+                logger.error(f"  [Email] Failed to process email uid={uid!r}: {e}")
+                continue
             all_items.extend(items)
-            logger.info(f"  [Email] Extracted {len(items)} stories from '{parsed.subject}'")
 
-            # Mark as processed in DB and Gmail
-            db.mark_email_processed(
-                parsed.message_id, parsed.sender, parsed.subject, len(items)
-            )
-            _mark_as_read(conn, uid)
-
+    except Exception as e:  # noqa: BLE001 — IMAP search/fetch errors (timeouts)
+        logger.error(f"  [Email] IMAP error, keeping {len(all_items)} items so far: {e}")
     finally:
         try:
             conn.logout()
@@ -165,31 +132,138 @@ def fetch_all_newsletters(cfg: dict, db: Database) -> list[RawNewsItem]:
     return all_items
 
 
+def _process_email(
+    conn: imaplib.IMAP4_SSL,
+    db: Database,
+    client: anthropic.Anthropic,
+    model: str,
+    uid: bytes,
+    raw_bytes: bytes,
+    sender_map: dict[str, str],
+) -> list[RawNewsItem]:
+    """Extract stories from one email; marks it processed only on success."""
+    parsed = _parse_email(raw_bytes)
+    if not parsed:
+        return []
+
+    # Check if already processed (idempotency)
+    if db.is_email_processed(parsed.message_id):
+        logger.info(f"  [Email] Skipping already processed: {parsed.subject}")
+        return []
+
+    # Filter to known senders
+    newsletter_name = _match_sender(parsed.sender, sender_map)
+    if not newsletter_name:
+        return []
+
+    logger.info(f"  [Email] Processing: {parsed.subject} (from {newsletter_name})")
+
+    # Convert HTML to readable text
+    email_text = _extract_text(parsed)
+    if not email_text or len(email_text.strip()) < 50:
+        # Deterministic: it will never have content, so record it as done
+        # rather than re-downloading it on every run.
+        logger.warning(f"  [Email] Empty/short content, skipping: {parsed.subject}")
+        db.mark_email_processed(parsed.message_id, parsed.sender, parsed.subject, 0)
+        _mark_as_read(conn, uid)
+        return []
+
+    # Cap length to avoid token limits
+    if len(email_text) > 30000:
+        email_text = email_text[:30000] + "\n\n[Content truncated]"
+
+    # Extract stories with Claude (raises -> caller leaves it unread for retry)
+    stories = _extract_stories_with_claude(
+        client, model, email_text, newsletter_name, parsed.subject
+    )
+    items = _stories_to_raw_items(stories, newsletter_name, parsed.message_id, parsed.date)
+    logger.info(f"  [Email] Extracted {len(items)} stories from '{parsed.subject}'")
+
+    # Mark as processed in DB and Gmail
+    db.mark_email_processed(parsed.message_id, parsed.sender, parsed.subject, len(items))
+    _mark_as_read(conn, uid)
+    return items
+
+
+IMAP_TIMEOUT_SECONDS = 30
+
+
 def _connect_imap(host: str, port: int, email_addr: str, password: str) -> imaplib.IMAP4_SSL:
-    """Connect and authenticate to IMAP server."""
-    conn = imaplib.IMAP4_SSL(host, port)
+    """Connect and authenticate to IMAP server.
+
+    Uses a verifying TLS context: without one, ``IMAP4_SSL`` falls back to an
+    unverified context and the app password would go to whoever answers.
+    """
+    conn = imaplib.IMAP4_SSL(
+        host, port,
+        ssl_context=ssl.create_default_context(),
+        timeout=IMAP_TIMEOUT_SECONDS,
+    )
     conn.login(email_addr, password)
     conn.select("INBOX")
     return conn
 
 
-def _fetch_unread_emails(conn: imaplib.IMAP4_SSL, max_count: int) -> list[tuple[bytes, bytes]]:
-    """Fetch unread emails from INBOX. Returns list of (uid, raw_bytes)."""
-    status, data = conn.uid("search", None, "UNSEEN")
-    if status != "OK" or not data[0]:
-        return []
+def _sender_search_terms(senders: list[dict]) -> list[str]:
+    """Unique sender domains to search for — mirrors _match_sender's domain match."""
+    domains = {
+        s.get("address", "").strip().lower().split("@")[-1]
+        for s in senders
+        if "@" in s.get("address", "")
+    }
+    return sorted(d for d in domains if d)
 
-    uids = data[0].split()
-    # Limit to max_count most recent
-    uids = uids[-max_count:]
+
+def _fetch_unread_emails(
+    conn: imaplib.IMAP4_SSL, max_count: int, sender_terms: list[str]
+) -> list[tuple[bytes, bytes]]:
+    """Fetch unread emails from known senders. Returns list of (uid, raw_bytes).
+
+    The search runs server-side per sender domain, so unrelated mail in the
+    inbox is never downloaded, and messages are fetched with BODY.PEEK[] so
+    fetching never sets \\Seen — only a successfully processed newsletter is
+    marked read (by _mark_as_read), and a failed one is retried next run.
+    """
+    uids: set[bytes] = set()
+    for term in sender_terms:
+        status, data = conn.uid("search", None, "UNSEEN", "FROM", f'"{term}"')
+        if status == "OK" and data and data[0]:
+            uids.update(data[0].split())
+
+    # Limit to max_count most recent (UIDs increase with arrival)
+    ordered = sorted(uids, key=int)[-max_count:]
 
     results = []
-    for uid in uids:
-        status, msg_data = conn.uid("fetch", uid, "(RFC822)")
-        if status == "OK" and msg_data[0]:
+    for uid in ordered:
+        status, msg_data = conn.uid("fetch", uid, "(BODY.PEEK[])")
+        if status == "OK" and msg_data and isinstance(msg_data[0], tuple):
             results.append((uid, msg_data[0][1]))
 
     return results
+
+
+def _decode_subject(subject: str) -> str:
+    """Decode an RFC 2047 subject; unknown or broken charsets degrade to
+    replacement characters instead of raising."""
+    if not subject:
+        return ""
+    parts = []
+    for part, charset in decode_header(subject):
+        if isinstance(part, bytes):
+            try:
+                parts.append(part.decode(charset or "utf-8", errors="replace"))
+            except LookupError:
+                parts.append(part.decode("utf-8", errors="replace"))
+        else:
+            parts.append(part)
+    return "".join(parts)
+
+
+def _decode_payload(payload: bytes, charset: Optional[str]) -> str:
+    try:
+        return payload.decode(charset or "utf-8", errors="replace")
+    except LookupError:
+        return payload.decode("utf-8", errors="replace")
 
 
 def _parse_email(raw_bytes: bytes) -> Optional[ParsedEmail]:
@@ -199,16 +273,14 @@ def _parse_email(raw_bytes: bytes) -> Optional[ParsedEmail]:
     except Exception:
         return None
 
-    message_id = msg.get("Message-ID", "")
-    sender = msg.get("From", "")
-    subject = msg.get("Subject", "")
-    # Decode subject if encoded
-    if subject:
-        decoded_parts = decode_header(subject)
-        subject = "".join(
-            part.decode(charset or "utf-8") if isinstance(part, bytes) else part
-            for part, charset in decoded_parts
-        )
+    # Processed-email idempotency keys on this, so an email without a
+    # Message-ID gets a stable content hash rather than "" (which would make
+    # every later ID-less email look already processed).
+    message_id = (msg.get("Message-ID") or "").strip()
+    if not message_id:
+        message_id = "<sha256:" + hashlib.sha256(raw_bytes).hexdigest() + ">"
+    sender = str(msg.get("From", ""))
+    subject = _decode_subject(str(msg.get("Subject", "")))
 
     # Parse date
     date_str = msg.get("Date", "")
@@ -230,19 +302,16 @@ def _parse_email(raw_bytes: bytes) -> Optional[ParsedEmail]:
             if content_type == "text/html" and not html_body:
                 payload = part.get_payload(decode=True)
                 if payload:
-                    charset = part.get_content_charset() or "utf-8"
-                    html_body = payload.decode(charset, errors="replace")
+                    html_body = _decode_payload(payload, part.get_content_charset())
             elif content_type == "text/plain" and not text_body:
                 payload = part.get_payload(decode=True)
                 if payload:
-                    charset = part.get_content_charset() or "utf-8"
-                    text_body = payload.decode(charset, errors="replace")
+                    text_body = _decode_payload(payload, part.get_content_charset())
     else:
         content_type = msg.get_content_type()
         payload = msg.get_payload(decode=True)
         if payload:
-            charset = msg.get_content_charset() or "utf-8"
-            decoded = payload.decode(charset, errors="replace")
+            decoded = _decode_payload(payload, msg.get_content_charset())
             if content_type == "text/html":
                 html_body = decoded
             else:
@@ -370,8 +439,11 @@ def _stories_to_raw_items(
 
         # For stories without URLs, generate a synthetic one
         if not url:
+            # Index in the path, not a #fragment: normalize_url strips
+            # fragments, which collapsed every URL-less story in an email
+            # onto one URL and deduped all but the first away.
             safe_id = re.sub(r"[^a-zA-Z0-9._-]", "", message_id.strip("<>"))
-            url = f"newsletter://{newsletter_name}/{safe_id}#{i}"
+            url = f"newsletter://{newsletter_name}/{safe_id}/{i}"
 
         description = story.get("description", "")
         content = story.get("content")  # Full text for essay-style stories

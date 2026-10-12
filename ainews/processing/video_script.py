@@ -291,17 +291,22 @@ def _validate_script(script: dict, n_stories: int) -> None:
                 )
 
 
-def previously_covered_urls(scripts_dir: Path, days: int = 14) -> "set[str]":
+def previously_covered_urls(
+    scripts_dir: Path, days: int = 14, exclude_stem: Optional[str] = None
+) -> "set[str]":
     """URLs already used by recent episodes (so stories never repeat).
 
     Reads the ``meta.story_urls`` of every episode script in the window.
+    ``exclude_stem`` (the day being generated) is skipped: a retry for the
+    same day must not treat that day's own earlier output as "covered", or
+    it would pick a different, weaker set of stories.
     """
     cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
     covered: "set[str]" = set()
     if not scripts_dir.exists():
         return covered
     for path in scripts_dir.glob("*.json"):
-        if path.stem < cutoff:
+        if path.stem < cutoff or path.stem == exclude_stem:
             continue
         try:
             with open(path, encoding="utf-8") as f:
@@ -571,23 +576,38 @@ def run_video_script(
     model: str = DEFAULT_SCRIPT_MODEL,
     show_name: str = "The Daily Prompt",
     on_date: Optional[str] = None,
+    edition_date: Optional[str] = None,
     exclude_covered: bool = True,
     logger: Optional[logging.Logger] = None,
 ) -> dict:
     """End-to-end Stage 1: select stories, generate, persist.
 
+    ``edition_date`` (YYYY-MM-DD) names the output and anchors the selection
+    window at that day — the orchestrator fixes it once so a retry after
+    midnight UTC still produces that day's episode. ``on_date`` instead
+    selects an exact calendar day (regeneration).
+
     Returns ``{"status": "ok", "json_path": ..., "md_path": ..., ...}`` or
     ``{"status": "no-stories"}`` when the window has nothing scriptworthy.
     """
     log = logger or logging.getLogger(__name__)
-    exclude_urls = previously_covered_urls(output_dir) if exclude_covered else set()
+    real_now = datetime.now(timezone.utc)
+    # Fixed before the (slow) Claude call so a run can't straddle midnight.
+    day_key = on_date or edition_date or real_now.strftime("%Y-%m-%d")
+    anchor = None
+    if edition_date and not on_date:
+        day_end = datetime.fromisoformat(edition_date).replace(tzinfo=timezone.utc) + timedelta(days=1)
+        anchor = min(real_now, day_end)
+    exclude_urls = (
+        previously_covered_urls(output_dir, exclude_stem=day_key) if exclude_covered else set()
+    )
     if exclude_urls:
         log.info("Video script: excluding %d previously covered stories", len(exclude_urls))
     stories = select_stories(
         db, hours=hours, catchup_hours=catchup_hours,
         catchup_min_score=catchup_min_score,
         min_score=min_score, max_stories=max_stories,
-        on_date=on_date, exclude_urls=exclude_urls,
+        now=anchor, on_date=on_date, exclude_urls=exclude_urls,
     )
     if not stories:
         log.info(
@@ -605,7 +625,6 @@ def run_video_script(
         model=model, target_minutes=target_minutes,
         words_per_minute=words_per_minute, show_name=show_name, logger=log,
     )
-    day_key = on_date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
     json_path, md_path = write_script_files(script, output_dir, day_key)
     log.info(
         "Video script written: %s (%d words, ~%ds)",
