@@ -127,6 +127,16 @@ class RenderTests(unittest.TestCase):
         self.assertIn("announcement", html)
         self.assertIn("3 outlets", html)
 
+    def test_non_http_story_links_are_not_rendered_as_links(self):
+        nl = self._nl()
+        nl["stories"][0]["url"] = "javascript:alert(document.cookie)"
+        nl["stories"].append(dict(nl["stories"][0], headline="Essay", url="newsletter://X/abc/0"))
+        html = render_html(nl)
+        self.assertNotIn("javascript:", html)
+        self.assertNotIn("newsletter://", html)
+        self.assertIn("Headline &lt;one&gt; &amp; more", html)
+        self.assertIn("Essay", html)
+
     def test_text_fallback(self):
         text = render_text(self._nl())
         self.assertIn("01. Headline <one> & more (Wired)", text)

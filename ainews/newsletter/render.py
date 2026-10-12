@@ -11,6 +11,8 @@ from __future__ import annotations
 import re
 from html import escape
 
+from ainews.net_safety import safe_http_url
+
 _BOLD_RE = re.compile(r"\*\*(.+?)\*\*")
 
 
@@ -39,13 +41,18 @@ def _story_html(i: int, s: dict) -> str:
     summary = escape(s.get("summary", ""))
     headline = escape(s["headline"])
     source = escape(s.get("source", ""))
-    url = escape(s["url"], quote=True)
+    link = safe_http_url(s.get("url"))
+    headline_style = f"color:{TEXT};font-size:18px;font-weight:700;text-decoration:none;line-height:1.3;"
+    if link:
+        headline_html = f'<a href="{escape(link, quote=True)}" style="{headline_style}">{headline}</a>'
+    else:  # URL-less newsletter essay (or an unsafe scheme): plain headline
+        headline_html = f'<span style="{headline_style}">{headline}</span>'
     return f"""
         <tr><td style="padding:18px 0;border-bottom:1px solid #23262e;">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
             <td valign="top" width="34" style="color:{ACCENT};font-weight:700;font-size:15px;font-family:{FONT};">{i:02d}</td>
             <td valign="top" style="font-family:{FONT};">
-              <a href="{url}" style="color:{TEXT};font-size:18px;font-weight:700;text-decoration:none;line-height:1.3;">{headline}</a>
+              {headline_html}
               <div style="margin-top:5px;font-size:12px;color:{DIM};">{source}{tag_html}</div>
               <div style="margin-top:8px;font-size:14px;color:{DIM};line-height:1.5;">{summary}</div>
             </td>

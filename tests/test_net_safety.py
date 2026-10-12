@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from ainews.net_safety import is_public_url
+from ainews.net_safety import is_public_url, safe_http_url
 
 
 def _resolver(mapping: dict[str, list[str]]):
@@ -47,6 +47,19 @@ class IsPublicUrlTests(unittest.TestCase):
         for url in ("file:///etc/passwd", "newsletter://x/1", "javascript:alert(1)", "ftp://x/"):
             with self.subTest(url=url):
                 self.assertFalse(is_public_url(url, resolve=_resolver({})))
+
+
+class SafeHttpUrlTests(unittest.TestCase):
+    def test_http_and_https_links_pass_through(self) -> None:
+        for url in ("https://openai.com/index/x", "http://example.com/a?b=1"):
+            with self.subTest(url=url):
+                self.assertEqual(safe_http_url(url), url)
+
+    def test_other_schemes_become_empty(self) -> None:
+        for url in ("javascript:alert(1)", " JavaScript:alert(1)", "data:text/html,x",
+                    "newsletter://Import AI/abc/0", "vbscript:x", "", None, "https://"):
+            with self.subTest(url=url):
+                self.assertEqual(safe_http_url(url), "")
 
 
 if __name__ == "__main__":

@@ -52,3 +52,21 @@ def _looks_like_ip(host: str) -> bool:
         return True
     except ValueError:
         return False
+
+
+def safe_http_url(url) -> str:
+    """``url`` if it is an http(s) link with a host, else "".
+
+    For links rendered into the dashboard and the newsletter: anything else
+    (``javascript:``, ``data:``, the synthetic ``newsletter://`` ids) must not
+    become a clickable href.
+    """
+    if not isinstance(url, str):
+        return ""
+    try:
+        parsed = urlparse(url.strip())
+    except ValueError:
+        return ""
+    if parsed.scheme.lower() in ("http", "https") and parsed.netloc:
+        return url.strip()
+    return ""

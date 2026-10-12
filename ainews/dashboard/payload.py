@@ -13,6 +13,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any, Iterable, Mapping
 
 from ainews.models import ProcessedNewsItem
+from ainews.net_safety import safe_http_url
 
 
 SourceType = str  # "Official" | "Web Scrape" | "Newsletter"
@@ -131,7 +132,7 @@ def _story_to_dict(
     return {
         "id": primary.id,
         "title": primary.title,
-        "url": primary.url,
+        "url": safe_http_url(primary.url),
         "source": primary.source,
         "published": primary.published.isoformat() if primary.published else None,
         "score": primary.score,
@@ -146,7 +147,7 @@ def _story_to_dict(
         "starred": primary.starred,
         "group_id": primary.group_id,
         "related": [
-            {"source": r.source, "title": r.title, "url": r.url}
+            {"source": r.source, "title": r.title, "url": safe_http_url(r.url)}
             for r in related
         ],
         "source_meta": source_meta(primary.source, overrides),
