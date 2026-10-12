@@ -1,3 +1,5 @@
 node_modules/
 public/audio/
+public/screenshots/
+public/props-*.json
 out/
