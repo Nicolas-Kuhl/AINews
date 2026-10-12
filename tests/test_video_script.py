@@ -253,6 +253,45 @@ class OutputTests(unittest.TestCase):
         finally:
             db.close()
 
+    def test_rerun_for_the_same_day_keeps_that_days_stories(self) -> None:
+        """A retry must not treat the day's own earlier script as 'covered'
+        (that silently produced a different, weaker episode)."""
+        db = Database(str(self.tmpdir / "t.db"))
+        try:
+            db.insert(_item("Big story", score=9))
+            db.insert(_item("Other story", score=7))
+            draft = json.dumps(_script_response(2, words_per_section=194))
+            client = _StubClient([draft, draft])
+            out = self.tmpdir / "scripts"
+
+            first = run_video_script(db, client, output_dir=out, min_score=6, max_stories=5)
+            second = run_video_script(db, client, output_dir=out, min_score=6, max_stories=5)
+
+            self.assertEqual(first["status"], "ok")
+            self.assertEqual(second["status"], "ok")
+            self.assertEqual(second["story_count"], 2)
+        finally:
+            db.close()
+
+    def test_edition_date_names_the_output_file(self) -> None:
+        """The orchestrator fixes the date once; a retry after midnight UTC
+        must still write that edition, not tomorrow's."""
+        db = Database(str(self.tmpdir / "t.db"))
+        try:
+            yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+            db.insert(_item("Late story", score=9, hours_ago=1))
+            client = _StubClient([json.dumps(_script_response(1, words_per_section=258))])
+
+            result = run_video_script(
+                db, client, output_dir=self.tmpdir / "scripts",
+                min_score=6, max_stories=5, edition_date=yesterday,
+            )
+
+            self.assertEqual(result["status"], "ok")
+            self.assertEqual(Path(result["json_path"]).stem, yesterday)
+        finally:
+            db.close()
+
     def test_run_with_empty_db_skips(self) -> None:
         db = Database(str(self.tmpdir / "t.db"))
         try:
@@ -264,8 +303,6 @@ class OutputTests(unittest.TestCase):
             db.close()
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 class StorySelectionWindowTests(unittest.TestCase):
@@ -293,7 +330,8 @@ class StorySelectionWindowTests(unittest.TestCase):
         self.db.insert(_item("Today's medium story", score=6, hours_ago=2))
 
         stories = select_stories(self.db, hours=24, catchup_hours=72,
-                                 min_score=6, max_stories=5)
+                                 min_score=6, max_stories=5,
+                                 weekend_rollup=False)
 
         titles = [p.title for p, _ in stories]
         self.assertIn("Two days ago banger", titles)
@@ -305,7 +343,8 @@ class StorySelectionWindowTests(unittest.TestCase):
         self.db.insert(_item("Old eight", score=8, hours_ago=50))
 
         stories = select_stories(self.db, hours=24, catchup_hours=72,
-                                 min_score=6, max_stories=5)
+                                 min_score=6, max_stories=5,
+                                 weekend_rollup=False)
 
         titles = [p.title for p, _ in stories]
         self.assertNotIn("Old eight", titles)
@@ -317,7 +356,8 @@ class StorySelectionWindowTests(unittest.TestCase):
         self.db.insert(_item("Missed banger", score=9, hours_ago=50))
 
         stories = select_stories(self.db, hours=24, catchup_hours=72,
-                                 min_score=6, max_stories=5)
+                                 min_score=6, max_stories=5,
+                                 weekend_rollup=False)
 
         titles = [p.title for p, _ in stories]
         self.assertIn("Missed banger", titles)
@@ -327,7 +367,8 @@ class StorySelectionWindowTests(unittest.TestCase):
         self.db.insert(_item("Old mediocre", score=7, hours_ago=50))
 
         stories = select_stories(self.db, hours=24, catchup_hours=72,
-                                 catchup_min_score=8, min_score=6, max_stories=5)
+                                 catchup_min_score=8, min_score=6, max_stories=5,
+                                 weekend_rollup=False)
 
         self.assertEqual(stories, [])
 
@@ -481,3 +522,7 @@ class WeekendRollupTests(unittest.TestCase):
             self.assertIn("Tuesday news", titles)
         finally:
             db.close()
+
+
+if __name__ == "__main__":
+    unittest.main()
