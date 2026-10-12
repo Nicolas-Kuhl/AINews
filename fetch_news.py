@@ -15,7 +15,7 @@ from ainews.fetchers.content_fetcher import fetch_content_for_items
 from ainews.fetchers.rss_fetcher import fetch_all_feeds
 from ainews.fetchers.web_searcher import search_all_queries
 from ainews.processing.deduplicator import deduplicate
-from ainews.processing.scorer import score_items
+from ainews.processing.scorer import rescore_fallback_items, score_items
 from ainews.rss_generator import save_rss_feed
 from ainews.runlock import RunLockBusy, run_lock
 from ainews.storage.database import Database
@@ -237,6 +237,7 @@ def _run_pipeline(category_filter, cfg: dict, data_dir: Path, logger: logging.Lo
     logger.info(f"  New unique items: {len(new_items)}")
 
     if not new_items:
+        _rescore_fallbacks(db, anthropic.Anthropic(api_key=api_key), cfg, logger)
         logger.info("\nNo new items to process. Generating RSS feed...")
         # Still generate RSS feed even if no new items
         _generate_rss_feed(db, cfg, logger)
@@ -268,9 +269,10 @@ def _run_pipeline(category_filter, cfg: dict, data_dir: Path, logger: logging.Lo
         )
         logger.info(f"  Got content for {content_count}/{len(new_items)} items")
 
-    # 6. Score with Claude
-    logger.info(f"\n[6/8] Scoring {len(new_items)} items with Claude ({cfg['model']})...")
+    # 6. Score with Claude (first retry earlier runs' failed scores)
     client = anthropic.Anthropic(api_key=api_key)
+    _rescore_fallbacks(db, client, cfg, logger)
+    logger.info(f"\n[6/8] Scoring {len(new_items)} items with Claude ({cfg['model']})...")
     processed = score_items(
         client, cfg["model"], new_items,
         batch_size=cfg.get("scoring_batch_size", 10),
@@ -345,6 +347,22 @@ def _run_pipeline(category_filter, cfg: dict, data_dir: Path, logger: logging.Lo
 
     # Write timestamp for dashboard
     write_last_run_timestamp(data_dir / ".last_run")
+
+
+def _rescore_fallbacks(db, client, cfg, logger):
+    """Re-score recent items stored with a fallback score after an API error."""
+    try:
+        fixed = rescore_fallback_items(
+            db, client, cfg["model"],
+            batch_size=cfg.get("scoring_batch_size", 10),
+            scoring_prompt=cfg.get("scoring_prompt"),
+            categories=cfg.get("categories"),
+            content_max=cfg.get("content_score_chars", 3000),
+        )
+        if fixed:
+            logger.info(f"  Re-scored {fixed} items that previously failed to score")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"  Re-scoring failed (non-fatal): {exc}")
 
 
 def _generate_rss_feed(db, cfg, logger):

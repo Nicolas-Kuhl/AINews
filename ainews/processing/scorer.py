@@ -6,6 +6,15 @@ import anthropic
 
 from ainews.models import RawNewsItem, ProcessedNewsItem
 
+# Reasoning written when Claude couldn't score an item (API error, or the
+# item missing from the response). Such rows are stored so the story isn't
+# lost, then re-scored on later runs by rescore_fallback_items.
+FALLBACK_REASON_PREFIX = "Auto-scored ("
+
+
+def needs_rescore(reasoning: str) -> bool:
+    return (reasoning or "").startswith(FALLBACK_REASON_PREFIX)
+
 
 DEFAULT_SCORING_PROMPT = """\
 You are the news editor for a daily AI news show. Your job is to judge
@@ -108,19 +117,38 @@ def _score_batch(
                 title=item.title, url=item.url, source=item.source,
                 published=item.published, content=item.content,
                 summary=item.description or "",
-                score=5, score_reasoning=f"Auto-scored (API error: {e})",
+                score=5, score_reasoning=f"{FALLBACK_REASON_PREFIX}API error: {e})",
                 category=(categories[-1] if categories else "Developer Tools"),
                 fetched_via=item.fetched_via,
             )
             for item in items
         ]
 
+    # Match results to items by the "id" the prompt asks for; position is only
+    # a fallback, since one skipped item would shift every later result.
+    by_id = {
+        r["id"]: r for r in results
+        if isinstance(r, dict) and isinstance(r.get("id"), int)
+    }
+
     processed = []
     for i, item in enumerate(items):
-        try:
-            data = results[i] if i < len(results) else {}
-        except (IndexError, TypeError):
-            data = {}
+        if by_id:
+            data = by_id.get(start_index + i)
+        else:
+            data = results[i] if i < len(results) else None
+
+        if not isinstance(data, dict) or not data:
+            print(f"  [Scorer]   Item {start_index + i}: missing from response, will rescore")
+            processed.append(ProcessedNewsItem(
+                title=item.title, url=item.url, source=item.source,
+                published=item.published, content=item.content,
+                summary=item.description or "",
+                score=5, score_reasoning=f"{FALLBACK_REASON_PREFIX}missing from model response)",
+                category=(categories[-1] if categories else "Developer Tools"),
+                fetched_via=item.fetched_via,
+            ))
+            continue
 
         score = max(1, min(10, int(data.get("score", 5))))
         summary = data.get("summary", item.description or "")
@@ -175,3 +203,46 @@ def score_items(
         processed.extend(batch_results)
 
     return processed
+
+
+def rescore_fallback_items(
+    db,
+    client: anthropic.Anthropic,
+    model: str,
+    *,
+    batch_size: int = 10,
+    scoring_prompt: Optional[str] = None,
+    categories: Optional[list[str]] = None,
+    content_max: int = 3000,
+    max_age_days: int = 7,
+    limit: int = 50,
+) -> int:
+    """Re-score recent rows stored with a fallback score. Returns rows fixed.
+
+    Rows that fail again keep their fallback marker and are retried next run
+    until they age out of ``max_age_days``.
+    """
+    rows = db.get_items_needing_rescore(
+        prefix=FALLBACK_REASON_PREFIX, max_age_days=max_age_days, limit=limit
+    )
+    if not rows:
+        return 0
+    print(f"  [Scorer] Re-scoring {len(rows)} items that previously failed to score...")
+    raws = [
+        RawNewsItem(
+            title=r.title, url=r.url, source=r.source, published=r.published,
+            description=r.summary, content=r.content, fetched_via=r.fetched_via,
+        )
+        for r in rows
+    ]
+    results = score_items(
+        client, model, raws, batch_size=batch_size, scoring_prompt=scoring_prompt,
+        categories=categories, content_max=content_max,
+    )
+    fixed = 0
+    for row, result in zip(rows, results):
+        if needs_rescore(result.score_reasoning):
+            continue
+        db.update_scoring(row.id, result)
+        fixed += 1
+    return fixed

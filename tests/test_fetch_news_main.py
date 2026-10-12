@@ -80,6 +80,16 @@ class FetchNewsMainTests(unittest.TestCase):
         self._run_main([])
         self.assertTrue(os.path.exists(os.path.join(self.tmpdir, ".last_run")))
 
+    def test_fallback_scores_are_retried_even_when_nothing_new_arrives(self) -> None:
+        with mock.patch.object(fetch_news, "rescore_fallback_items", return_value=0) as rescore:
+            self._run_main([])
+        rescore.assert_called_once()
+
+    def test_fallback_scores_are_retried_on_runs_with_new_items(self) -> None:
+        with mock.patch.object(fetch_news, "rescore_fallback_items", return_value=0) as rescore:
+            self._run_main([_raw()])
+        rescore.assert_called_once()
+
     def test_exits_without_fetching_while_another_run_holds_the_lock(self) -> None:
         from ainews.runlock import run_lock
 
