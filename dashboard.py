@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import yaml
 
+from ainews.auth_guard import auth_decision
 from ainews.config import load_config
 from ainews.dashboard.payload import build_by_day_payload, ensure_source_metas
 from ainews.frontend import reader as triage_reader
@@ -19,8 +20,13 @@ def check_authentication():
     """Check if authentication is enabled and handle login."""
     auth_config_path = PROJECT_ROOT / "auth_config.yaml"
 
-    # If no auth config exists, skip authentication
-    if not auth_config_path.exists():
+    # Fail closed: no config, or the example's cookie key / password, stops
+    # here unless AINEWS_AUTH_DISABLED=1 explicitly opts out.
+    mode, reason = auth_decision(auth_config_path)
+    if mode == "refuse":
+        st.error(reason)
+        st.stop()
+    if mode == "disabled":
         return True
 
     # Import authenticator only if config exists

@@ -67,56 +67,44 @@ else
     sed -i "s/change_this_to_a_random_string_32_characters_long/$COOKIE_KEY/" auth_config.yaml
 fi
 
-# Generate password
+# Set the admin password (required: the dashboard refuses the example hash)
 echo ""
 echo "[4/4] Setting admin password..."
 echo ""
-echo "The default password is 'changeme123'"
-read -p "Would you like to set a custom password now? (y/N): " set_password
-
-if [ "$set_password" = "y" ]; then
-    # Prompt for password
-    read -s -p "Enter new password: " PASSWORD1
+while true; do
+    read -s -p "Enter admin password (min 12 characters): " PASSWORD1
     echo ""
     read -s -p "Confirm password: " PASSWORD2
     echo ""
-
     if [ "$PASSWORD1" != "$PASSWORD2" ]; then
-        echo "ERROR: Passwords don't match!"
-        exit 1
-    fi
-
-    if [ ${#PASSWORD1} -lt 8 ]; then
-        echo "WARNING: Password is short. Consider using at least 8 characters."
-        read -p "Continue anyway? (y/N): " proceed
-        if [ "$proceed" != "y" ]; then
-            echo "Setup cancelled."
-            exit 1
-        fi
-    fi
-
-    echo ""
-    echo "Generating password hash..."
-
-    # Generate hash using bcrypt
-    PASSWORD_HASH=$($PYTHON_BIN -c "import bcrypt; print(bcrypt.hashpw('$PASSWORD1'.encode('utf-8'), bcrypt.gensalt()).decode('utf-8'))")
-
-    # Replace the password hash in auth_config.yaml
-    # Match the line that starts with 'password:' followed by a bcrypt hash
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        # macOS
-        sed -i '' "s|^      password: \\\$2b\\\$.*|      password: $PASSWORD_HASH|" auth_config.yaml
+        echo "Passwords don't match, try again."
+    elif [ ${#PASSWORD1} -lt 12 ]; then
+        echo "Password is too short, try again."
     else
-        # Linux
-        sed -i "s|^      password: \\\$2b\\\$.*|      password: $PASSWORD_HASH|" auth_config.yaml
+        break
     fi
+done
 
-    echo "✓ Custom password hash set in auth_config.yaml"
+echo ""
+echo "Generating password hash..."
+
+# Pass the password via the environment, not the command line (where it
+# would show in `ps` and break on quotes).
+PASSWORD_HASH=$(AINEWS_NEW_PASSWORD="$PASSWORD1" $PYTHON_BIN -c "import bcrypt, os; print(bcrypt.hashpw(os.environ['AINEWS_NEW_PASSWORD'].encode('utf-8'), bcrypt.gensalt()).decode('utf-8'))")
+unset PASSWORD1 PASSWORD2
+
+# Replace the password hash in auth_config.yaml
+# Match the line that starts with 'password:' followed by a bcrypt hash
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    # macOS
+    sed -i '' "s|^      password: \\\$2b\\\$.*|      password: $PASSWORD_HASH|" auth_config.yaml
 else
-    echo ""
-    echo "Using default password: changeme123"
-    echo "⚠️  IMPORTANT: Change this before deploying!"
+    # Linux
+    sed -i "s|^      password: \\\$2b\\\$.*|      password: $PASSWORD_HASH|" auth_config.yaml
 fi
+chmod 600 auth_config.yaml
+
+echo "✓ Password hash set in auth_config.yaml"
 
 echo ""
 echo "=================================================="
@@ -125,25 +113,18 @@ echo "=================================================="
 echo ""
 echo "Configuration file: auth_config.yaml"
 echo ""
-if [ "$set_password" = "y" ]; then
-    echo "Credentials:"
-    echo "  Username: admin"
-    echo "  Password: (your custom password)"
-else
-    echo "Default credentials:"
-    echo "  Username: admin"
-    echo "  Password: changeme123"
-    echo ""
-    echo "⚠️  REMEMBER: Change the default password before deploying!"
-fi
+echo "Credentials:"
+echo "  Username: admin"
+echo "  Password: (the one you just entered)"
 echo ""
 echo "To add more users or change passwords:"
 echo "  1. Run: python scripts/generate_password_hash.py"
 echo "  2. Edit auth_config.yaml"
 echo "  3. Add new username entries under 'credentials > usernames'"
 echo ""
-echo "To disable authentication:"
-echo "  Delete or rename auth_config.yaml"
+echo "To run without the dashboard login (only if access is restricted"
+echo "another way, e.g. localhost-only or nginx basic auth):"
+echo "  delete auth_config.yaml and set AINEWS_AUTH_DISABLED=1"
 echo ""
 echo "Start the dashboard:"
 echo "  streamlit run dashboard.py"
