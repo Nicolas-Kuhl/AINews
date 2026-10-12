@@ -1,8 +1,10 @@
 """Dashboard rendering components for AI News Aggregator."""
 
+import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Optional
 
 import anthropic
 import streamlit as st
@@ -37,6 +39,26 @@ Respond with ONLY the learning objectives as a markdown bulleted list \
 """
 
 
+def _secret_field_state(stored: str, env_var: str) -> tuple[str, bool]:
+    """Placeholder and disabled flag for a password input.
+
+    The stored secret is never used as the input's value: Streamlit would
+    send it to the browser. An env-supplied secret can't be edited here.
+    """
+    if os.environ.get(env_var):
+        return f"set via {env_var}", True
+    if stored:
+        return "saved — type a new one to replace it", False
+    return "not set", False
+
+
+def _secret_to_save(typed: str, stored: str) -> Optional[str]:
+    """The new secret to persist, or None to keep the stored one."""
+    if typed and typed != stored:
+        return typed
+    return None
+
+
 def load_css(css_file_path: Path):
     """Load external CSS file and font links."""
     # Font links — must be <link> tags, NOT @import inside <style>
@@ -55,7 +77,7 @@ def load_css(css_file_path: Path):
 def _search_web_for_context(query: str, max_results: int = 3) -> str:
     """Search the web and return formatted context for Claude."""
     try:
-        with DDGS(verify=False) as ddgs:
+        with DDGS() as ddgs:
             results = list(ddgs.text(query, max_results=max_results))
 
         if not results:
@@ -755,13 +777,18 @@ def _render_settings_tab(cfg, db, project_root):
                     nl_cfg["email"] = nl_email
                     save_config(cfg)
             with nl_col2:
-                nl_password = st.text_input(
-                    "App password", value=nl_cfg.get("password", ""),
-                    key="nl_password_input", type="password",
-                    help="Gmail App Password. Can also be set via AINEWS_EMAIL_PASSWORD env var.",
+                pw_placeholder, pw_disabled = _secret_field_state(
+                    nl_cfg.get("password", ""), "AINEWS_EMAIL_PASSWORD"
                 )
-                if nl_password != nl_cfg.get("password", ""):
-                    nl_cfg["password"] = nl_password
+                nl_password = st.text_input(
+                    "App password", value="",
+                    key="nl_password_input", type="password",
+                    placeholder=pw_placeholder, disabled=pw_disabled,
+                    help="Gmail App Password. Prefer the AINEWS_EMAIL_PASSWORD env var.",
+                )
+                new_password = _secret_to_save(nl_password, nl_cfg.get("password", ""))
+                if new_password and not pw_disabled:
+                    nl_cfg["password"] = new_password
                     save_config(cfg)
 
             st.markdown("**IMAP Settings**")
