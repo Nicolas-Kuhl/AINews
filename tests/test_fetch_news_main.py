@@ -90,6 +90,17 @@ class FetchNewsMainTests(unittest.TestCase):
             self._run_main([_raw()])
         rescore.assert_called_once()
 
+    def test_pipeline_runs_under_a_watchdog_that_is_cancelled_afterwards(self) -> None:
+        with mock.patch.object(fetch_news, "start_watchdog") as dog:
+            self._run_main([_raw()])
+        dog.assert_called_once()
+        self.assertEqual(dog.call_args.args[0], fetch_news.MAX_RUN_SECONDS)
+        dog.return_value.cancel.assert_called_once()
+
+    def test_open_run_outwaits_a_hung_run_killed_by_its_watchdog(self) -> None:
+        # Otherwise a hung trusted run at 18:00 would also cost the open run.
+        self.assertGreater(fetch_news.LOCK_WAIT_SECONDS, fetch_news.MAX_RUN_SECONDS)
+
     def test_trusted_run_skips_while_another_run_holds_the_lock(self) -> None:
         from ainews.runlock import run_lock
 
