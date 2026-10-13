@@ -13,6 +13,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from claude_fakes import FakeClaude
 from ainews.models import ProcessedNewsItem
 from ainews.processing.video_script import (
     count_narration_words,
@@ -68,30 +69,12 @@ def _script_response(n_segments: int, words_per_section: int = 100) -> dict:
     }
 
 
-class _StubMessages:
-    def __init__(self, responses: list[str]):
-        self._responses = list(responses)
-        self.calls: list[dict] = []
-
-    def create(self, **kwargs):
-        self.calls.append(kwargs)
-
-        class _Block:
-            def __init__(self, text):
-                self.text = text
-
-        class _Response:
-            def __init__(self, text):
-                self.content = [_Block(text)]
-
-        return _Response(self._responses.pop(0))
-
-
-class _StubClient:
-    """Stands in for anthropic.Anthropic; returns canned response texts."""
+class _StubClient(FakeClaude):
+    """Stands in for anthropic.Anthropic; replies with canned texts, each
+    after a thinking block as current models do."""
 
     def __init__(self, responses: list[str]):
-        self.messages = _StubMessages(responses)
+        super().__init__(*responses)
 
 
 class SelectStoriesTests(unittest.TestCase):
@@ -151,7 +134,7 @@ class GenerateScriptTests(unittest.TestCase):
 
         script = generate_script(client, self._stories(3), target_minutes=5)
 
-        self.assertEqual(len(client.messages.calls), 1)
+        self.assertEqual(len(client.requests), 1)
         self.assertEqual(script["meta"]["narration_words"], 775)
         self.assertEqual(script["meta"]["story_count"], 3)
 
@@ -162,10 +145,10 @@ class GenerateScriptTests(unittest.TestCase):
 
         script = generate_script(client, self._stories(3), target_minutes=5)
 
-        self.assertEqual(len(client.messages.calls), 2)
+        self.assertEqual(len(client.requests), 2)
         self.assertEqual(script["meta"]["narration_words"], 775)
         # Revision call must carry the conversation (draft + correction)
-        self.assertEqual(len(client.messages.calls[1]["messages"]), 3)
+        self.assertEqual(len(client.requests[1]["messages"]), 3)
 
     def test_invalid_revision_keeps_first_draft(self) -> None:
         long_draft = _script_response(3, words_per_section=300)

@@ -5,7 +5,12 @@ from typing import Optional
 
 import anthropic
 
+from ainews import llm
 from ainews.models import RawNewsItem, ProcessedNewsItem
+
+# Room for adaptive thinking plus ~10 scored items (the newer tokenizer counts
+# ~30% more tokens for the same text). Non-streaming, so kept at 16K.
+SCORING_MAX_TOKENS = 16000
 
 # Reasoning written when Claude couldn't score an item (API error, or the
 # item missing from the response). Such rows are stored so the story isn't
@@ -62,8 +67,8 @@ Score guide:
 - 1-2:  Noise — routine, promotional, or not really news
 
 Respond in valid JSON only — a JSON array with one object per item, in the same order as the input.
-Each object must have: {"id": N, "short_summary": "...", "summary": "...", "score": N, "reasoning": "...", "learning_objectives": ["key takeaway", "...", "..."], "category": "New Releases" or "Research" or "Business" or "Developer Tools"}
-(The "learning_objectives" key carries the key-takeaway bullets; the field name is kept for storage compatibility.)
+Each object must have: {"id": N, "short_summary": "...", "summary": "...", "score": N, "score_rationale": "...", "learning_objectives": ["key takeaway", "...", "..."], "category": "New Releases" or "Research" or "Business" or "Developer Tools"}
+("score_rationale" is one sentence telling the editor why the item earned its score. The "learning_objectives" key carries the key-takeaway bullets; the field name is kept for storage compatibility.)
 
 NEWS ITEMS:
 {items_text}
@@ -84,6 +89,7 @@ def _score_batch(
     start_index: int, scoring_prompt: str,
     categories: Optional[list[str]] = None,
     content_max: int = 3000,
+    effort: str = llm.DEFAULT_EFFORT["scoring"],
 ) -> list[ProcessedNewsItem]:
     """Score a batch of items in a single API call."""
     items_text = "\n\n".join(
@@ -92,12 +98,10 @@ def _score_batch(
     prompt = scoring_prompt.replace("{items_text}", items_text)
 
     try:
-        response = client.messages.create(
-            model=model,
-            max_tokens=800 * len(items),
-            messages=[{"role": "user", "content": prompt}],
-        )
-        text = response.content[0].text.strip()
+        text = llm.complete(
+            client, model=model, effort=effort, prompt=prompt,
+            max_tokens=SCORING_MAX_TOKENS,
+        ).strip()
         # Extract JSON array from response
         json_match = re.search(r"\[.*\]", text, re.DOTALL)
         if json_match:
@@ -159,7 +163,8 @@ def _score_batch(
         score = max(1, min(10, int(data.get("score", 5))))
         summary = data.get("summary", item.description or "")
         short_summary = data.get("short_summary", "") or ""
-        reasoning = data.get("reasoning", "")
+        # "reasoning" is what older (and custom config) prompts asked for.
+        reasoning = data.get("score_rationale") or data.get("reasoning", "")
         raw_objectives = data.get("learning_objectives", [])
         if isinstance(raw_objectives, list):
             learning_objectives = "\n".join(f"- {obj}" for obj in raw_objectives if obj)
@@ -192,6 +197,7 @@ def score_items(
     scoring_prompt: Optional[str] = None,
     categories: Optional[list[str]] = None,
     content_max: int = 3000,
+    effort: str = llm.DEFAULT_EFFORT["scoring"],
 ) -> list[ProcessedNewsItem]:
     """Score a list of raw news items using Claude in batches."""
     batch_size = max(1, batch_size)
@@ -205,7 +211,9 @@ def score_items(
         end = min(start + batch_size, total)
         batch = items[start:end]
         print(f"  [Scorer] Scoring batch {batch_num + 1}/{num_batches} (items {start + 1}-{end} of {total})...")
-        batch_results = _score_batch(client, model, batch, start + 1, prompt, categories, content_max)
+        batch_results = _score_batch(
+            client, model, batch, start + 1, prompt, categories, content_max, effort
+        )
         processed.extend(batch_results)
 
     return processed
@@ -223,6 +231,7 @@ def rescore_fallback_items(
     max_age_days: int = 7,
     limit: int = 50,
     now: Optional[datetime] = None,
+    effort: str = llm.DEFAULT_EFFORT["scoring"],
 ) -> int:
     """Re-score recent rows stored with a fallback score. Returns rows fixed.
 
@@ -247,7 +256,7 @@ def rescore_fallback_items(
     ]
     results = score_items(
         client, model, raws, batch_size=batch_size, scoring_prompt=scoring_prompt,
-        categories=categories, content_max=content_max,
+        categories=categories, content_max=content_max, effort=effort,
     )
     fixed = 0
     for row, result in zip(rows, results):

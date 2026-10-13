@@ -202,8 +202,12 @@ db_path: "data/ainews.db"
 
 # Anthropic API
 anthropic_api_key: "sk-ant-..."  # Required for scoring and LO generation
-model: claude-sonnet-4-5-20250929
-lo_model: claude-opus-4-6
+models:            # per task; see ainews/llm.py for the full list and defaults
+  scoring: claude-sonnet-5-5
+  learning_objectives: claude-opus-5-5
+effort:            # low | medium | high | xhigh | max
+  scoring: low
+  learning_objectives: medium
 
 # Scoring configuration
 scoring_batch_size: 20  # Items per Claude API request
@@ -531,7 +535,7 @@ def score_items(
 
     Args:
         client: Anthropic API client
-        model: Model to use (claude-sonnet-4-5-20250929)
+        model: Model to use (models.scoring; default claude-sonnet-5-5)
         items: Items to score
         batch_size: Items per API call
         scoring_prompt: Custom prompt (optional)
@@ -551,11 +555,12 @@ def score_items(
 
 **API Call Example:**
 ```python
-response = client.messages.create(
-    model="claude-sonnet-4-5-20250929",
-    max_tokens=4096,
-    messages=[{"role": "user", "content": prompt}]
-)
+from ainews import llm
+
+# Builds the request (effort, server-side refusal fallback) and reads the
+# reply's text blocks by type - responses can start with thinking blocks.
+text = llm.complete(client, model="claude-sonnet-5-5", effort="low",
+                    prompt=prompt, max_tokens=16000)
 ```
 
 #### Grouper (`processing/grouper.py`)
@@ -1291,25 +1296,14 @@ import anthropic
 
 client = anthropic.Anthropic(api_key="sk-ant-...")
 
-response = client.messages.create(
-    model="claude-sonnet-4-5-20250929",
-    max_tokens=4096,
-    messages=[
-        {
-            "role": "user",
-            "content": scoring_prompt
-        }
-    ]
-)
-
-result = response.content[0].text
+result = llm.complete(client, model="claude-sonnet-5-5", effort="low",
+                      prompt=scoring_prompt, max_tokens=16000)
 ```
 
 **Learning Objectives Call:**
 ```python
-response = client.messages.create(
-    model="claude-opus-4-6",
-    max_tokens=1024,
+response = llm.create(
+    client, model="claude-opus-5-5", effort="medium", max_tokens=16000,
     messages=[
         {
             "role": "user",
@@ -1323,7 +1317,7 @@ response = client.messages.create(
     ]
 )
 
-objectives = response.content[0].text.strip()
+objectives = llm.response_text(response).strip()
 ```
 
 ---

@@ -22,7 +22,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from ainews.config import load_config  # noqa: E402
-from ainews.processing.brief import DEFAULT_BRIEF_MODEL, refresh_briefs  # noqa: E402
+from ainews import llm  # noqa: E402
+from ainews.processing.brief import refresh_briefs  # noqa: E402
 from ainews.storage.database import Database  # noqa: E402
 
 
@@ -30,7 +31,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--force", action="store_true", help="Regenerate even if a brief exists")
     parser.add_argument("--days", type=int, default=5, help="Lookback window for Day Briefs")
-    parser.add_argument("--model", default=DEFAULT_BRIEF_MODEL, help="Claude model id")
+    parser.add_argument("--model", help="Claude model id (default: the configured brief model)")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -49,7 +50,8 @@ def main() -> int:
             db,
             client,
             lookback_days=args.days,
-            model=args.model,
+            model=args.model or llm.model_for(cfg, "brief"),
+            effort=llm.effort_for(cfg, "brief"),
             force=args.force,
             logger=log,
         )

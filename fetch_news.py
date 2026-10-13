@@ -10,6 +10,7 @@ from pathlib import Path
 
 import anthropic
 
+from ainews import llm
 from ainews.config import load_config
 from ainews.fetchers.content_fetcher import fetch_content_for_items
 from ainews.fetchers.rss_fetcher import fetch_all_feeds
@@ -296,9 +297,10 @@ def _run_pipeline(category_filter, cfg: dict, data_dir: Path, logger: logging.Lo
     # 6. Score with Claude (first retry earlier runs' failed scores)
     client = anthropic.Anthropic(api_key=api_key)
     _rescore_fallbacks(db, client, cfg, logger)
-    logger.info(f"\n[6/8] Scoring {len(new_items)} items with Claude ({cfg['model']})...")
+    logger.info(f"\n[6/8] Scoring {len(new_items)} items with Claude ({llm.model_for(cfg, 'scoring')})...")
     processed = score_items(
-        client, cfg["model"], new_items,
+        client, llm.model_for(cfg, "scoring"), new_items,
+        effort=llm.effort_for(cfg, "scoring"),
         batch_size=cfg.get("scoring_batch_size", 10),
         scoring_prompt=cfg.get("scoring_prompt"),
         categories=cfg.get("categories"),
@@ -322,7 +324,8 @@ def _run_pipeline(category_filter, cfg: dict, data_dir: Path, logger: logging.Lo
         ecfg = cfg.get("embeddings", {})
         judge = None
         if ecfg.get("llm_dedup", True):
-            judge = make_llm_judge(client, cfg["model"])
+            judge = make_llm_judge(client, llm.model_for(cfg, "dedup_judge"),
+                                   effort=llm.effort_for(cfg, "dedup_judge"))
         cluster_count = cluster_recent_items(
             db,
             threshold=ecfg.get("threshold", 0.80),
@@ -344,7 +347,10 @@ def _run_pipeline(category_filter, cfg: dict, data_dir: Path, logger: logging.Lo
     try:
         from ainews.processing.brief import refresh_briefs
         logger.info("\n[8b] Refreshing editorial briefs...")
-        brief_summary = refresh_briefs(db, client, logger=logger)
+        brief_summary = refresh_briefs(
+            db, client, model=llm.model_for(cfg, "brief"),
+            effort=llm.effort_for(cfg, "brief"), logger=logger,
+        )
         logger.info(f"  Briefs: morning={brief_summary.get('morning')} days={brief_summary.get('days')}")
     except Exception as brief_exc:  # noqa: BLE001
         logger.warning(f"  Brief refresh failed (non-fatal): {brief_exc}")
@@ -377,7 +383,8 @@ def _rescore_fallbacks(db, client, cfg, logger):
     """Re-score recent items stored with a fallback score after an API error."""
     try:
         fixed = rescore_fallback_items(
-            db, client, cfg["model"],
+            db, client, llm.model_for(cfg, "scoring"),
+            effort=llm.effort_for(cfg, "scoring"),
             batch_size=cfg.get("scoring_batch_size", 10),
             scoring_prompt=cfg.get("scoring_prompt"),
             categories=cfg.get("categories"),

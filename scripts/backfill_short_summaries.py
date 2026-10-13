@@ -22,11 +22,12 @@ import anthropic
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from ainews import llm  # noqa: E402
 from ainews.config import load_config  # noqa: E402
 from ainews.storage.database import Database  # noqa: E402
 
 
-DEFAULT_MODEL = "claude-sonnet-4-6"
+DEFAULT_MODEL = llm.DEFAULT_MODELS["scoring"]
 
 PROMPT_TEMPLATE = """\
 You are editing an AI-news triage console. For each item below, write a
@@ -55,29 +56,29 @@ def _format_item(idx: int, row: dict) -> str:
     return "\n".join(parts)
 
 
-def _run_batch(client: anthropic.Anthropic, model: str, rows: list[dict]) -> dict[int, str]:
+def _run_batch(client: anthropic.Anthropic, model: str, rows: list[dict],
+               effort: str = llm.DEFAULT_EFFORT["scoring"]) -> dict[int, str]:
     items_text = "\n\n".join(_format_item(i, r) for i, r in enumerate(rows))
     prompt = PROMPT_TEMPLATE.format(items_text=items_text)
-    response = client.messages.create(
-        model=model,
-        max_tokens=250 * len(rows),
-        messages=[{"role": "user", "content": prompt}],
-    )
-    text = response.content[0].text.strip()
+    text = llm.complete(
+        client, model=model, effort=effort, prompt=prompt, max_tokens=16000,
+    ).strip()
     match = re.search(r"\[.*\]", text, re.DOTALL)
     if match:
         data = json.loads(match.group())
     else:
         data = json.loads(text)
+    # Match by the [Item N] index the prompt asks the model to echo as "id":
+    # by position, one skipped item would put every later summary on the
+    # wrong story.
     result: dict[int, str] = {}
-    for i, row in enumerate(rows):
-        try:
-            obj = data[i]
-        except (IndexError, TypeError):
+    for obj in data if isinstance(data, list) else []:
+        idx = obj.get("id") if isinstance(obj, dict) else None
+        if not isinstance(idx, int) or not 0 <= idx < len(rows):
             continue
         short = (obj.get("short_summary") or "").strip()
         if short:
-            result[row["id"]] = short
+            result[rows[idx]["id"]] = short
     return result
 
 
@@ -122,7 +123,7 @@ def main() -> int:
         for start in range(0, len(rows), args.batch_size):
             batch = rows[start : start + args.batch_size]
             try:
-                updates = _run_batch(client, args.model, batch)
+                updates = _run_batch(client, args.model, batch, llm.effort_for(cfg, "scoring"))
             except Exception as exc:  # noqa: BLE001
                 log.warning("Batch %d failed: %s", start // args.batch_size, exc)
                 total_failed += len(batch)

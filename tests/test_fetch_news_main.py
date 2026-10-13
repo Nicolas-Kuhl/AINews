@@ -23,7 +23,6 @@ def _cfg(tmpdir: str) -> dict:
         "anthropic_api_key": "sk-test",
         "db_path": os.path.join(tmpdir, "ainews.db"),
         "rss_output_path": os.path.join(tmpdir, "high_priority.xml"),
-        "model": "claude-test",
         "feeds": [{"name": "Feed", "url": "https://example.com/rss",
                    "type": "rss", "category": "trusted", "enabled": True}],
         "search_queries": [],

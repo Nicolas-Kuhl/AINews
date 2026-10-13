@@ -10,6 +10,8 @@ import anthropic
 import streamlit as st
 from ddgs import DDGS
 
+from ainews import llm
+
 DEFAULT_LO_PROMPT = """\
 You are an expert AI curriculum designer creating learning objectives for \
 educational video content about AI developments.
@@ -100,8 +102,13 @@ def _web_search_tool(query: str) -> str:
     return _search_web_for_context(query, max_results=3)
 
 
+LO_MAX_TOKENS = 16000     # thinking + objectives, per request
+LO_MAX_TOOL_ROUNDS = 5    # bound the search loop
+
+
 def generate_learning_objectives(cfg: dict, item):
-    """Call Claude Opus with extended thinking and web research to generate learning objectives."""
+    """Generate learning objectives with the learning_objectives task model
+    (an Opus), optionally letting it run web searches first."""
     api_key = cfg.get("anthropic_api_key", "")
     prompt_template = cfg.get("lo_prompt") or DEFAULT_LO_PROMPT
 
@@ -149,57 +156,46 @@ def generate_learning_objectives(cfg: dict, item):
     ]
 
     client = anthropic.Anthropic(api_key=api_key)
-    lo_model = cfg.get("lo_model", "claude-opus-4-6")
+    model = llm.model_for(cfg, "learning_objectives")
+    effort = llm.effort_for(cfg, "learning_objectives")
+    request_tools = tools if web_research_enabled else None
 
-    # Initial request with tools
+    # Current Opus thinks adaptively (always on); effort sets how much.
+    # The history is append-only and each assistant turn is passed back
+    # unchanged (thinking blocks included), as preserved thinking requires.
     messages = [{"role": "user", "content": full_prompt}]
-
-    response = client.messages.create(
-        model=lo_model,
-        max_tokens=4096,
-        thinking={
-            "type": "enabled",
-            "budget_tokens": 3000
-        },
-        tools=tools if web_research_enabled else None,
-        messages=messages,
+    response = llm.create(
+        client, model=model, effort=effort, max_tokens=LO_MAX_TOKENS,
+        tools=request_tools, messages=list(messages),
     )
 
-    # Handle tool use (if Claude wants to search)
-    while response.stop_reason == "tool_use":
-        tool_uses = [block for block in response.content if block.type == "tool_use"]
-
-        # Execute tools
+    for _ in range(LO_MAX_TOOL_ROUNDS):
+        if response.stop_reason != "tool_use":
+            break
         tool_results = []
-        for tool_use in tool_uses:
+        for tool_use in (b for b in response.content if b.type == "tool_use"):
             if tool_use.name == "web_search":
-                query = tool_use.input["query"]
-                result = _web_search_tool(query)
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": tool_use.id,
-                    "content": result
+                    "content": _web_search_tool(tool_use.input["query"]),
                 })
-
-        # Add assistant response and tool results to messages
+            else:
+                # Every tool_use needs a result, or the next request is a 400.
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": tool_use.id,
+                    "content": f"Unknown tool '{tool_use.name}'. Only web_search is available.",
+                    "is_error": True,
+                })
         messages.append({"role": "assistant", "content": response.content})
         messages.append({"role": "user", "content": tool_results})
-
-        # Continue conversation
-        response = client.messages.create(
-            model=lo_model,
-            max_tokens=4096,
-            tools=tools if web_research_enabled else None,
-            messages=messages,
+        response = llm.create(
+            client, model=model, effort=effort, max_tokens=LO_MAX_TOKENS,
+            tools=request_tools, messages=list(messages),
         )
 
-    # Extract text content (skip thinking blocks)
-    text_content = ""
-    for block in response.content:
-        if block.type == "text":
-            text_content += block.text
-
-    return text_content.strip()
+    return llm.response_text(response).strip()
 
 
 def _story_badges(primary, related) -> str:

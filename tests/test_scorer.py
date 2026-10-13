@@ -7,31 +7,18 @@ import os
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
-from types import SimpleNamespace
-
 from ainews.models import ProcessedNewsItem, RawNewsItem
 from ainews.processing import scorer
 from ainews.storage.database import Database
+from claude_fakes import FakeClaude
 
 
-class _FakeMessages:
-    def __init__(self, responder):
-        self.responder = responder
-        self.calls = 0
-
-    def create(self, **kwargs):
-        self.calls += 1
-        return self.responder(kwargs)
+def _client(reply):
+    return FakeClaude(reply)
 
 
-def _client(responder):
-    return SimpleNamespace(messages=_FakeMessages(responder))
-
-
-def _json_reply(results: list[dict]):
-    def responder(kwargs):
-        return SimpleNamespace(content=[SimpleNamespace(type="text", text=json.dumps(results))])
-    return responder
+def _json_reply(results: list[dict]) -> str:
+    return json.dumps(results)
 
 
 def _failing(kwargs):
@@ -74,6 +61,24 @@ class ScoreBatchFallbackTests(unittest.TestCase):
         out = scorer.score_items(client, "m", [_raw(n) for n in range(1, 5)], batch_size=2)
         self.assertFalse(any(scorer.needs_rescore(i.score_reasoning) for i in out))
         self.assertEqual([i.score for i in out], [7, 9, 7, 9])
+
+
+class ScoreRationaleTests(unittest.TestCase):
+    def test_default_prompt_does_not_request_a_reasoning_field(self) -> None:
+        # A "reasoning" field in JSON output can be declined as reasoning
+        # extraction on current models; ask for a short rationale instead.
+        self.assertNotIn('"reasoning"', scorer.DEFAULT_SCORING_PROMPT)
+        self.assertIn('"score_rationale"', scorer.DEFAULT_SCORING_PROMPT)
+
+    def test_rationale_is_stored_as_score_reasoning(self) -> None:
+        item = dict(_good(1), score_rationale="Major launch from a frontier lab.")
+        item.pop("reasoning")
+        out = scorer.score_items(_client(_json_reply([item])), "m", [_raw(1)])
+        self.assertEqual(out[0].score_reasoning, "Major launch from a frontier lab.")
+
+    def test_legacy_reasoning_key_from_a_custom_prompt_still_works(self) -> None:
+        out = scorer.score_items(_client(_json_reply([_good(1)])), "m", [_raw(1)])
+        self.assertEqual(out[0].score_reasoning, "why")
 
 
 class RescoreFallbackItemsTests(unittest.TestCase):
@@ -126,7 +131,7 @@ class RescoreFallbackItemsTests(unittest.TestCase):
                 prefix=scorer.FALLBACK_REASON_PREFIX, max_age_days=7, limit=50, now=at)]
 
         scorer.rescore_fallback_items(self.db, client, "m", now=now)
-        self.assertEqual(client.messages.calls, 1)
+        self.assertEqual(len(client.requests), 1)
         self.assertEqual(due(now + timedelta(minutes=10)), [])        # deferred 15 min
         self.assertEqual(due(now + timedelta(minutes=16)), [item_id])
 

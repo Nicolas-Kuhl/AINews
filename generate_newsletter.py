@@ -29,6 +29,7 @@ from typing import Optional
 
 import anthropic
 
+from ainews import llm
 from ainews.config import load_config
 from ainews.newsletter.compose import (
     compose_newsletter,
@@ -80,6 +81,8 @@ def run(
             min_score=nl_cfg.get("min_score", 6),
             max_stories=nl_cfg.get("max_stories", 12),
             site_url=nl_cfg.get("site_url", "https://ainews.eyrean.com"),
+            brief_model=llm.model_for(cfg, "brief"),
+            brief_effort=llm.effort_for(cfg, "brief"),
             logger_=log,
         )
     if nl is None:

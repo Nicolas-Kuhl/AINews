@@ -7,8 +7,9 @@ Produces two kinds of briefs:
 - **Day Brief** — a per-date paragraph rendered under each day header in the
   Digest view. Persisted to ``day_briefs``.
 
-The generator calls Claude Sonnet (cost-optimized vs. Opus) and asks for a
-single paragraph with ``**bold**`` markdown for entities/numbers.
+The generator calls the ``brief`` task model (a Sonnet; see ``ainews.llm``)
+and asks for a single paragraph with ``**bold**`` markdown for
+entities/numbers.
 """
 
 from __future__ import annotations
@@ -19,11 +20,15 @@ from typing import Iterable, Optional
 
 import anthropic
 
+from ainews import llm
 from ainews.models import ProcessedNewsItem
 from ainews.storage.database import Database
 
 
-DEFAULT_BRIEF_MODEL = "claude-sonnet-4-6"
+DEFAULT_BRIEF_MODEL = llm.DEFAULT_MODELS["brief"]
+DEFAULT_BRIEF_EFFORT = llm.DEFAULT_EFFORT["brief"]
+# A ~150-word paragraph plus room for adaptive thinking.
+BRIEF_MAX_TOKENS = 4000
 
 _MORNING_PROMPT = """\
 You are an editor writing the Morning Brief for an AI-news triage console.
@@ -59,14 +64,11 @@ def _format_story_line(item: ProcessedNewsItem) -> str:
 
 
 def _call_claude(
-    client: anthropic.Anthropic, model: str, prompt: str
+    client: anthropic.Anthropic, model: str, prompt: str, effort: str = DEFAULT_BRIEF_EFFORT
 ) -> str:
-    response = client.messages.create(
-        model=model,
-        max_tokens=600,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    text = response.content[0].text.strip()
+    text = llm.complete(
+        client, model=model, effort=effort, prompt=prompt, max_tokens=BRIEF_MAX_TOKENS,
+    ).strip()
     # Strip any leading "Morning Brief:" / "Day Brief:" prefix the model might add
     for prefix in ("Morning Brief:", "Day Brief:", "Brief:"):
         if text.lower().startswith(prefix.lower()):
@@ -80,13 +82,14 @@ def generate_morning_brief(
     *,
     model: str = DEFAULT_BRIEF_MODEL,
     max_stories: int = 20,
+    effort: str = DEFAULT_BRIEF_EFFORT,
 ) -> Optional[str]:
     ordered = sorted(stories, key=lambda s: s.score, reverse=True)[:max_stories]
     if not ordered:
         return None
     block = "\n".join(_format_story_line(s) for s in ordered)
     prompt = _MORNING_PROMPT.format(stories_block=block)
-    return _call_claude(client, model, prompt)
+    return _call_claude(client, model, prompt, effort)
 
 
 def generate_day_brief(
@@ -95,13 +98,14 @@ def generate_day_brief(
     *,
     model: str = DEFAULT_BRIEF_MODEL,
     max_stories: int = 15,
+    effort: str = DEFAULT_BRIEF_EFFORT,
 ) -> Optional[str]:
     ordered = sorted(stories, key=lambda s: s.score, reverse=True)[:max_stories]
     if not ordered:
         return None
     block = "\n".join(_format_story_line(s) for s in ordered)
     prompt = _DAY_PROMPT.format(stories_block=block)
-    return _call_claude(client, model, prompt)
+    return _call_claude(client, model, prompt, effort)
 
 
 def _stories_for_day(db: Database, day_key: str) -> list[ProcessedNewsItem]:
@@ -120,6 +124,7 @@ def refresh_briefs(
     today: Optional[date] = None,
     lookback_days: int = 5,
     model: str = DEFAULT_BRIEF_MODEL,
+    effort: str = DEFAULT_BRIEF_EFFORT,
     force: bool = False,
     logger: Optional[logging.Logger] = None,
 ) -> dict:
@@ -137,7 +142,7 @@ def refresh_briefs(
     stories = _stories_for_day(db, today_key)
     if stories:
         try:
-            paragraph = generate_morning_brief(client, stories, model=model)
+            paragraph = generate_morning_brief(client, stories, model=model, effort=effort)
             if paragraph:
                 db.upsert_morning_brief(today_key, paragraph=paragraph)
                 result["morning"] = "ok"
@@ -163,7 +168,7 @@ def refresh_briefs(
             result["days"][day_key] = "no-stories"
             continue
         try:
-            paragraph = generate_day_brief(client, stories, model=model)
+            paragraph = generate_day_brief(client, stories, model=model, effort=effort)
             if paragraph:
                 db.upsert_day_brief(day_key, paragraph)
                 result["days"][day_key] = "ok"
