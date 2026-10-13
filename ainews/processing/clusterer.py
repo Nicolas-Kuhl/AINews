@@ -28,6 +28,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+from ainews import llm
 from ainews.processing.embeddings import (
     TitanEmbedder,
     cosine,
@@ -161,7 +162,7 @@ def _borderline_pairs(
     return [(i, j) for _sim, i, j in scored[:max_pairs]]
 
 
-def make_llm_judge(client, model: str):
+def make_llm_judge(client, model: str, effort: str = llm.DEFAULT_EFFORT["dedup_judge"]):
     """Build a judge(pairs)->list[bool] backed by Claude. Each pair is
     (repr_a, repr_b); returns True where the two describe the same news event."""
     def judge(pairs: "list[tuple[str, str]]") -> "list[bool]":
@@ -181,12 +182,11 @@ def make_llm_judge(client, model: str):
                 "e.g. [1, 4]. Empty array [] if none.\n\n" + listing
             )
             try:
-                resp = client.messages.create(
-                    model=model, max_tokens=1000,
-                    messages=[{"role": "user", "content": prompt}],
+                text = llm.complete(
+                    client, model=model, effort=effort, prompt=prompt, max_tokens=4000,
                 )
                 from ainews.processing.deduplicator import parse_first_json_array
-                arr = parse_first_json_array(resp.content[0].text or "[]")
+                arr = parse_first_json_array(text or "[]")
                 for n in arr:
                     if isinstance(n, int) and 1 <= n <= len(batch):
                         out[start + n - 1] = True

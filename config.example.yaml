@@ -1,6 +1,20 @@
 anthropic_api_key: YOUR_API_KEY_HERE
-model: claude-sonnet-4-5-20250929
-lo_model: claude-opus-4-6
+# Claude model and effort per task (these are the defaults; omit to use them).
+# Effort is how much the model thinks: low | medium | high | xhigh | max.
+models:
+  scoring: claude-sonnet-5-5
+  dedup_judge: claude-sonnet-5-5
+  newsletter_extraction: claude-sonnet-5-5
+  brief: claude-sonnet-5-5
+  video_script: claude-sonnet-5-5
+  learning_objectives: claude-opus-5-5
+effort:
+  scoring: low
+  dedup_judge: low
+  newsletter_extraction: low
+  brief: low
+  video_script: medium
+  learning_objectives: medium
 lo_web_research: true
 lo_search_count: 3
 semantic_dedup: true

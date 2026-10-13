@@ -202,8 +202,8 @@ All settings are in `config.yaml` and can also be edited from the dashboard Sett
 | Key | Description | Default |
 |-----|-------------|---------|
 | `anthropic_api_key` | Your Anthropic API key | — |
-| `model` | Model used for scoring | `claude-sonnet-4-5-20250929` |
-| `lo_model` | Model used for learning objectives | `claude-opus-4-6` |
+| `models.<task>` | Claude model per task: `scoring`, `dedup_judge`, `newsletter_extraction`, `brief`, `video_script`, `learning_objectives` | `claude-sonnet-5-5` (learning objectives: `claude-opus-5-5`) |
+| `effort.<task>` | How much the model thinks per task: `low` … `max` | `low` (video script, learning objectives: `medium`) |
 | `lo_web_research` | Enable web research for learning objectives | `true` |
 | `lo_search_count` | Number of web searches per learning objective | `3` |
 | `feeds` | List of news sources (name, url, type, enabled, category) | 49 sources |

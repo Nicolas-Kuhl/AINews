@@ -1,5 +1,6 @@
 import copy
 import errno
+import logging
 import os
 import shutil
 import tempfile
@@ -9,6 +10,8 @@ import yaml
 
 
 CONFIG_PATH = Path(__file__).parent.parent / "config.yaml"
+
+logger = logging.getLogger(__name__)
 
 # Secrets that may come from the environment instead of config.yaml:
 # (env var, key path inside cfg). Env values win on load and are never
@@ -40,7 +43,31 @@ def load_config(path: Path = CONFIG_PATH) -> dict:
     """Load and validate config.yaml, with env var overrides."""
     cfg = _apply_defaults(_read_raw(path))
     _apply_env_secrets(cfg)
+    _warn_legacy_model_keys(cfg)
     return cfg
+
+
+# Pre-``models:`` keys. Older dashboard saves froze them into config.yaml;
+# they are ignored now (see ainews.llm) and only reported.
+_LEGACY_MODEL_KEYS = (
+    ("model",), ("lo_model",), ("video_script", "model"), ("newsletters", "model"),
+)
+
+
+def _warn_legacy_model_keys(cfg: dict) -> None:
+    found = []
+    for key_path in _LEGACY_MODEL_KEYS:
+        node = cfg
+        for key in key_path:
+            node = node.get(key) if isinstance(node, dict) else None
+        if node:
+            found.append(".".join(key_path))
+    if found:
+        logger.warning(
+            "config.yaml sets %s, which no longer choose Claude models; use the "
+            "per-task `models:` / `effort:` blocks instead (see config.example.yaml)",
+            ", ".join(found),
+        )
 
 
 def _apply_defaults(cfg: dict) -> dict:
@@ -50,7 +77,6 @@ def _apply_defaults(cfg: dict) -> dict:
     cfg["db_path"] = str(project_root / cfg.get("db_path", "data/ainews.db"))
 
     # Defaults
-    cfg.setdefault("model", "claude-sonnet-4-5-20250929")
     cfg.setdefault("feeds", [])
     cfg.setdefault("search_queries", [])
     cfg.setdefault("dedup_threshold", 80)

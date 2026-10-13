@@ -13,6 +13,7 @@ from ainews.newsletter.compose import compose_newsletter
 from ainews.newsletter.render import render_html, render_text
 from ainews.newsletter.send import send_newsletter
 from ainews.storage.database import Database
+from claude_fakes import FakeClaude
 
 
 def _item(title, score=7, hours_ago=2, source="OpenAI News", url=None):
@@ -25,25 +26,11 @@ def _item(title, score=7, hours_ago=2, source="OpenAI News", url=None):
     )
 
 
-class _StubMsgs:
-    def __init__(self, text):
-        self._text = text
-        self.calls = []
+class _StubClient(FakeClaude):
+    """Answers every request with the intro text (after a thinking block)."""
 
-    def create(self, **kw):
-        self.calls.append(kw)
-
-        class B:
-            def __init__(s, t): s.text = t
-
-        class R:
-            def __init__(s, t): s.content = [B(t)]
-        return R(self._text)
-
-
-class _StubClient:
     def __init__(self, text="A punchy **intro** paragraph."):
-        self.messages = _StubMsgs(text)
+        super().__init__(text)
 
 
 class ComposeTests(unittest.TestCase):
@@ -64,7 +51,7 @@ class ComposeTests(unittest.TestCase):
             scripts_dir=self.scripts, max_stories=12,
         )
         self.assertEqual(len(nl["stories"]), 12)
-        self.assertIn("intro", nl)
+        self.assertEqual(nl["intro"], "A punchy **intro** paragraph.")
         self.assertEqual(nl["meta"]["story_count"], 12)
 
     def test_excludes_previously_sent(self):
@@ -265,7 +252,7 @@ class RunNewsletterTests(unittest.TestCase):
         self.assertEqual(self._run(second_ses, client=second_client), 0)
         self.assertEqual(len(first_ses.sent), 2)
         self.assertEqual(second_ses.sent, [])
-        self.assertEqual(second_client.messages.calls, [])
+        self.assertEqual(second_client.requests, [])
 
     def test_failure_output_gives_a_retry_command_pinned_to_the_issue_date(self):
         """A bare rerun after midnight UTC would compose and send tomorrow's

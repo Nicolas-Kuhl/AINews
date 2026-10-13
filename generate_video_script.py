@@ -20,6 +20,7 @@ from pathlib import Path
 
 import anthropic
 
+from ainews import llm
 from ainews.config import load_config
 from ainews.processing.video_script import run_video_script
 from ainews.storage.database import Database
@@ -71,7 +72,8 @@ def main():
             max_stories=args.max_stories or vs_cfg.get("max_stories", 7),
             target_minutes=args.minutes or vs_cfg.get("target_minutes", 5),
             words_per_minute=vs_cfg.get("words_per_minute", 155),
-            model=vs_cfg.get("model", cfg.get("model", "claude-sonnet-4-6")),
+            model=llm.model_for(cfg, "video_script"),
+            effort=llm.effort_for(cfg, "video_script"),
             show_name=vs_cfg.get("show_name", "The Daily Prompt"),
             on_date=args.date,
             edition_date=args.edition_date,

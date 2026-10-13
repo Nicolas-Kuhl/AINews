@@ -3,7 +3,7 @@
 # Requires: Python >=3.10
 
 # Core API
-anthropic>=0.78.0
+anthropic>=1.13,<2  # current models: effort, server-side refusal fallback
 
 # Dashboard
 streamlit>=1.54.0

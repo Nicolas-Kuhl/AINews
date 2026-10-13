@@ -16,10 +16,14 @@ from typing import Optional
 import anthropic
 import trafilatura
 
+from ainews import llm
 from ainews.models import RawNewsItem
 from ainews.storage.database import Database
 
 logger = logging.getLogger(__name__)
+
+# Room for adaptive thinking plus 20+ stories (non-streaming cap).
+EXTRACTION_MAX_TOKENS = 16000
 
 EXTRACTION_PROMPT = """You are extracting individual news stories from an AI newsletter email.
 
@@ -86,7 +90,8 @@ def fetch_all_newsletters(cfg: dict, db: Database) -> list[RawNewsItem]:
         return []
 
     max_emails = nl_cfg.get("max_emails_per_run", 50)
-    model = nl_cfg.get("model", cfg.get("model", "claude-sonnet-4-5-20250929"))
+    model = llm.model_for(cfg, "newsletter_extraction")
+    effort = llm.effort_for(cfg, "newsletter_extraction")
 
     # Connect to IMAP
     try:
@@ -114,7 +119,7 @@ def fetch_all_newsletters(cfg: dict, db: Database) -> list[RawNewsItem]:
             # whole daily run; it stays unread and unprocessed for a retry.
             try:
                 items = _process_email(
-                    conn, db, client, model, uid, raw_bytes, sender_map
+                    conn, db, client, model, uid, raw_bytes, sender_map, effort
                 )
             except Exception as e:  # noqa: BLE001
                 logger.error(f"  [Email] Failed to process email uid={uid!r}: {e}")
@@ -140,6 +145,7 @@ def _process_email(
     uid: bytes,
     raw_bytes: bytes,
     sender_map: dict[str, str],
+    effort: str = llm.DEFAULT_EFFORT["newsletter_extraction"],
 ) -> list[RawNewsItem]:
     """Extract stories from one email; marks it processed only on success."""
     parsed = _parse_email(raw_bytes)
@@ -174,7 +180,7 @@ def _process_email(
 
     # Extract stories with Claude (raises -> caller leaves it unread for retry)
     stories = _extract_stories_with_claude(
-        client, model, email_text, newsletter_name, parsed.subject
+        client, model, email_text, newsletter_name, parsed.subject, effort
     )
     items = _stories_to_raw_items(stories, newsletter_name, parsed.message_id, parsed.date)
     logger.info(f"  [Email] Extracted {len(items)} stories from '{parsed.subject}'")
@@ -367,6 +373,7 @@ def _extract_stories_with_claude(
     email_text: str,
     newsletter_name: str,
     subject: str,
+    effort: str = llm.DEFAULT_EFFORT["newsletter_extraction"],
 ) -> list[dict]:
     """Use Claude to extract structured stories from newsletter text."""
     prompt = EXTRACTION_PROMPT.format(
@@ -375,13 +382,13 @@ def _extract_stories_with_claude(
         email_text=email_text,
     )
 
-    response = client.messages.create(
-        model=model,
-        max_tokens=8192,
+    response = llm.create(
+        client, model=model, effort=effort, max_tokens=EXTRACTION_MAX_TOKENS,
         messages=[{"role": "user", "content": prompt}],
     )
-
-    text = response.content[0].text.strip()
+    # A long essay can run past max_tokens; the complete stories before the
+    # cut are still worth keeping (_repair_json_array below).
+    text = llm.response_text(response, allow_truncated=True).strip()
 
     # Handle markdown code fences
     if text.startswith("```"):

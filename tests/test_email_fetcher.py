@@ -119,7 +119,7 @@ class FetchAllNewslettersTests(unittest.TestCase):
         conn = _FakeImap({'UNSEEN FROM "a.example"': b"1 2"},
                          {b"1": _email("bad", "Bad"), b"2": _email("good", "Good")})
 
-        def extract(client, model, text, name, subject):
+        def extract(client, model, text, name, subject, *_):
             if subject == "Bad":
                 return ["not a story object"]
             return [{"title": "Real story", "url": "https://a.example/s", "description": "d"}]
@@ -143,6 +143,24 @@ class FetchAllNewslettersTests(unittest.TestCase):
         extract.assert_not_called()
         self.assertTrue(self.db.is_email_processed("<short@x>"))
         self.assertIn(("store", b"1", "+FLAGS", "\\Seen"), conn.commands)
+
+
+class ExtractStoriesTests(unittest.TestCase):
+    def test_stories_are_read_after_a_thinking_block(self) -> None:
+        from claude_fakes import FakeClaude
+        client = FakeClaude('[{"title": "A", "url": "https://a.example/1", "description": "d"}]')
+        stories = email_fetcher._extract_stories_with_claude(
+            client, "claude-sonnet-5-5", "body text", "TLDR", "Subject", effort="low")
+        self.assertEqual([s["title"] for s in stories], ["A"])
+        self.assertEqual(client.requests[0]["output_config"], {"effort": "low"})
+
+    def test_truncated_reply_keeps_the_complete_stories(self) -> None:
+        from claude_fakes import FakeClaude, message, text_block, thinking_block
+        partial = '[{"title": "A", "url": null}, {"title": "B", "content": "long essay te'
+        client = FakeClaude(message(thinking_block(), text_block(partial), stop_reason="max_tokens"))
+        stories = email_fetcher._extract_stories_with_claude(
+            client, "claude-sonnet-5-5", "body text", "TLDR", "Subject")
+        self.assertEqual([s["title"] for s in stories], ["A"])
 
 
 class SyntheticUrlTests(unittest.TestCase):

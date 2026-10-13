@@ -30,6 +30,8 @@ from typing import Optional
 
 import anthropic
 
+from ainews import llm
+
 from urllib.parse import urlparse
 
 from ainews.models import ProcessedNewsItem
@@ -113,7 +115,10 @@ def rank_stories(pairs: list) -> list:
     return sorted(pairs, key=_key, reverse=True)
 
 
-DEFAULT_SCRIPT_MODEL = "claude-sonnet-4-6"
+DEFAULT_SCRIPT_MODEL = llm.DEFAULT_MODELS["video_script"]
+DEFAULT_SCRIPT_EFFORT = llm.DEFAULT_EFFORT["video_script"]
+# A ~775-word JSON script plus room for adaptive thinking (non-streaming cap).
+SCRIPT_MAX_TOKENS = 16000
 
 # Conversational narration pace. 155 wpm is a comfortable "energetic host"
 # read; the renderer can trim silence either way.
@@ -436,6 +441,7 @@ def generate_script(
     stories: list,
     *,
     model: str = DEFAULT_SCRIPT_MODEL,
+    effort: str = DEFAULT_SCRIPT_EFFORT,
     target_minutes: float = 5.0,
     words_per_minute: int = DEFAULT_WORDS_PER_MINUTE,
     show_name: str = "The Daily Prompt",
@@ -471,8 +477,9 @@ def generate_script(
     )
 
     messages = [{"role": "user", "content": prompt}]
-    response = client.messages.create(model=model, max_tokens=8000, messages=messages)
-    text = response.content[0].text
+    text = llm.response_text(llm.create(
+        client, model=model, effort=effort, messages=messages, max_tokens=SCRIPT_MAX_TOKENS,
+    ))
     script = _parse_script_json(text)
     _validate_script(script, n_stories)
 
@@ -497,8 +504,10 @@ def generate_script(
                 actual_words=actual, target_words=target_words, direction=direction
             ),
         })
-        response = client.messages.create(model=model, max_tokens=8000, messages=messages)
-        revised = _parse_script_json(response.content[0].text)
+        revised = _parse_script_json(llm.response_text(llm.create(
+            client, model=model, effort=effort, messages=messages,
+            max_tokens=SCRIPT_MAX_TOKENS,
+        )))
         try:
             _validate_script(revised, n_stories)
             script = revised
@@ -574,6 +583,7 @@ def run_video_script(
     target_minutes: float = 5.0,
     words_per_minute: int = DEFAULT_WORDS_PER_MINUTE,
     model: str = DEFAULT_SCRIPT_MODEL,
+    effort: str = DEFAULT_SCRIPT_EFFORT,
     show_name: str = "The Daily Prompt",
     on_date: Optional[str] = None,
     edition_date: Optional[str] = None,
@@ -622,7 +632,7 @@ def run_video_script(
     )
     script = generate_script(
         client, stories,
-        model=model, target_minutes=target_minutes,
+        model=model, effort=effort, target_minutes=target_minutes,
         words_per_minute=words_per_minute, show_name=show_name, logger=log,
     )
     json_path, md_path = write_script_files(script, output_dir, day_key)

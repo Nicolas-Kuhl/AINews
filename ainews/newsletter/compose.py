@@ -21,6 +21,7 @@ from typing import Optional
 
 import anthropic
 
+from ainews import llm
 from ainews.processing.brief import generate_morning_brief
 from ainews.processing.video_script import (
     previously_covered_urls,
@@ -71,7 +72,8 @@ def compose_newsletter(
     min_score: int = 6,
     max_stories: int = 12,
     site_url: str = DEFAULT_SITE_URL,
-    brief_model: str = "claude-sonnet-4-6",
+    brief_model: str = llm.DEFAULT_MODELS["brief"],
+    brief_effort: str = llm.DEFAULT_EFFORT["brief"],
     logger_: Optional[logging.Logger] = None,
 ) -> Optional[dict]:
     """Build the newsletter dict for the day, or None if nothing qualifies."""
@@ -92,7 +94,8 @@ def compose_newsletter(
     # Intro paragraph — the editorial morning brief over today's primaries.
     try:
         intro = generate_morning_brief(
-            client, [p for p, _ in pairs], model=brief_model, max_stories=max_stories
+            client, [p for p, _ in pairs], model=brief_model, effort=brief_effort,
+            max_stories=max_stories,
         ) or ""
     except Exception as exc:  # noqa: BLE001
         log.warning("Newsletter intro generation failed (non-fatal): %s", exc)

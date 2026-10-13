@@ -213,8 +213,6 @@ class ClustererTests(unittest.TestCase):
         self.assertEqual(touched, 1)
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 class BorderlineJudgeTests(unittest.TestCase):
@@ -283,3 +281,20 @@ class BorderlineJudgeTests(unittest.TestCase):
         it = _item(title, score=7)
         it.published = datetime.now(timezone.utc)
         db.insert(it)
+
+
+class LlmJudgeTests(unittest.TestCase):
+    def test_judge_reads_the_verdict_after_a_thinking_block(self):
+        from ainews.processing.clusterer import make_llm_judge
+        from claude_fakes import FakeClaude
+
+        client = FakeClaude("[1]")
+        judge = make_llm_judge(client, "claude-sonnet-5-5", effort="low")
+        verdicts = judge([("A launches X", "A unveils X"), ("A launches X", "B raises funds")])
+        self.assertEqual(verdicts, [True, False])
+        self.assertEqual(client.requests[0]["model"], "claude-sonnet-5-5")
+        self.assertEqual(client.requests[0]["output_config"], {"effort": "low"})
+
+
+if __name__ == "__main__":
+    unittest.main()
